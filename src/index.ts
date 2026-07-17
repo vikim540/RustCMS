@@ -14,7 +14,7 @@
  *   /api/v1/admin/*          - 管理接口 (需 JWT)
  */
 import { Hono } from 'hono';
-import type { D1Database, KVNamespace, SendEmail } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, SendEmail, Queue, VectorizeIndex, Ai, RateLimit, Flagship } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission } from './services/auth';
@@ -28,16 +28,29 @@ import * as extraService from './services/extra';
 import * as modelService from './services/model';
 import * as systemService from './services/system';
 import * as notifyService from './services/notify';
+import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from './services/ratelimit';
+import { apiCache, clearContentCache, clearConfigCache } from './services/cache';
+import * as vectorizeService from './services/vectorize';
+import * as schedulerService from './services/scheduler';
 
 /** Worker 環境綁定 */
 export interface Env {
   DB: D1Database;
   CONFIG_CACHE: KVNamespace;
   TOKEN_BLACKLIST: KVNamespace;
+  API_CACHE: KVNamespace;
   JWT_SECRET: string;
   API_PREFIX: string;
   JWT_EXPIRE_DAYS: string;
-  EMAIL: SendEmail; // Cloudflare Email Service binding
+  EMAIL: SendEmail;
+  PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string }>;
+  ARTICLE_INDEX: VectorizeIndex;
+  AI: Ai;
+  PUBLIC_API_LIMIT: RateLimit;
+  ADMIN_API_LIMIT: RateLimit;
+  LOGIN_LIMIT: RateLimit;
+  FORM_LIMIT: RateLimit;
+  FLAGS: Flagship;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -128,7 +141,7 @@ app.get('/api/health', (c) => {
 });
 
 // ===== 認證接口 =====
-app.post('/api/v1/auth/login', async (c) => {
+app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
   return authService.handleLogin(c.env.DB, c.env.JWT_SECRET, body);
 });
@@ -160,7 +173,7 @@ app.get('/api/v1/sorts/:scode', async (c) => {
   return sortService.handleSortDetail(c.env.DB, scode);
 });
 
-app.get('/api/v1/contents', async (c) => {
+app.get('/api/v1/contents', publicRateLimit(), async (c) => {
   const params = new URL(c.req.url).searchParams;
   return contentService.handleListContents(c.env.DB, params);
 });
@@ -193,12 +206,12 @@ app.get('/api/v1/tags', async (c) => extraService.handleListTags(c.env.DB));
 
 app.get('/api/v1/labels', async (c) => extraService.handleListLabelsPublic(c.env.DB));
 
-app.post('/api/v1/messages', async (c) => {
+app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const body = await c.req.json();
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.env.EMAIL, c.executionCtx, userIp, userAgent, sourceUrl, body);
+  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.env.EMAIL, c.executionCtx, c.env.FLAGS, userIp, userAgent, sourceUrl, body);
 });
 
 // ===== 後台管理接口 - 內容管理 =====
@@ -229,7 +242,10 @@ app.post('/api/v1/admin/contents', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return contentService.handleCreateContent(c.env.DB, body);
+  const result = await contentService.handleCreateContent(c.env.DB, body);
+  // 清除內容緩存
+  await clearContentCache(c.env.API_CACHE);
+  return result;
 });
 
 app.put('/api/v1/admin/contents/:id', async (c) => {
@@ -237,14 +253,20 @@ app.put('/api/v1/admin/contents/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return contentService.handleUpdateContent(c.env.DB, id, body);
+  const result = await contentService.handleUpdateContent(c.env.DB, id, body);
+  // 清除內容緩存
+  await clearContentCache(c.env.API_CACHE);
+  return result;
 });
 
 app.delete('/api/v1/admin/contents/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return contentService.handleDeleteContent(c.env.DB, id);
+  const result = await contentService.handleDeleteContent(c.env.DB, id);
+  // 清除內容緩存
+  await clearContentCache(c.env.API_CACHE);
+  return result;
 });
 
 // 獲取內容的擴展字段值
@@ -312,7 +334,10 @@ app.put('/api/v1/admin/configs', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return configService.handleUpdateConfig(c.env.DB, c.env.CONFIG_CACHE, body);
+  const result = await configService.handleUpdateConfig(c.env.DB, c.env.CONFIG_CACHE, body);
+  // 清除 API 響應緩存
+  await clearConfigCache(c.env.API_CACHE);
+  return result;
 });
 
 // ===== 後台管理接口 - 儀表板統計 =====
@@ -914,6 +939,58 @@ app.delete('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   return systemService.handleDeleteBackup(c.env.DB, c.env.CONFIG_CACHE, filename);
 });
 
+// ===== 語義搜索 (Vectorize + Workers AI) =====
+app.get('/api/v1/search', publicRateLimit(), async (c) => {
+  const query = c.req.query('q') || '';
+  const topK = parseInt(c.req.query('topK') || '10', 10);
+  const threshold = parseFloat(c.req.query('threshold') || '0.7');
+  return vectorizeService.semanticSearch(c.env.AI, c.env.ARTICLE_INDEX, c.env.DB, query, topK, threshold);
+});
+
+// ===== 定時發布管理 (Queues + Cron) =====
+app.get('/api/v1/admin/scheduler/list', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return schedulerService.handleListScheduled(c.env.DB);
+});
+
+app.post('/api/v1/admin/scheduler/schedule', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  const id = Number(body.id) || 0;
+  const publishDate = body.publishDate || '';
+  return schedulerService.handleScheduleArticle(c.env.DB, c.env.PUBLISH_QUEUE, id, publishDate);
+});
+
+// ===== Vectorize 索引管理 =====
+app.post('/api/v1/admin/vectorize/reindex', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return vectorizeService.reindexAllArticles(c.env.AI, c.env.ARTICLE_INDEX, c.env.DB);
+});
+
+// ===== Flagship 功能開關查詢 =====
+app.get('/api/v1/admin/flags', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const flags = [
+    { key: 'notify_mail_enabled', label: '郵件通知', defaultValue: true },
+    { key: 'notify_webhook_enabled', label: 'Webhook通知', defaultValue: true },
+  ];
+  const results = await Promise.all(
+    flags.map(async (f) => {
+      const enabled = c.env.FLAGS
+        ? await c.env.FLAGS.getBooleanValue(f.key, f.defaultValue, {})
+        : f.defaultValue;
+      return { key: f.key, label: f.label, enabled };
+    }),
+  );
+  return okData(results, '成功');
+});
+
+// ===== 內容更新時清除緩存 + 索引向量 =====
+
 // ===== 404 兜底 =====
 app.notFound((c) => err('接口不存在', 1004));
 
@@ -923,4 +1000,21 @@ app.onError((e, c) => {
   return err('內部伺服器錯誤', 500);
 });
 
-export default app;
+// ===== Queues 消費者 (定時發布) =====
+export default {
+  fetch: app.fetch,
+  async queue(batch: MessageBatch<{ articleId: number; action: string; scheduledAt: string }>, env: Env): Promise<void> {
+    for (const msg of batch.messages) {
+      try {
+        await schedulerService.handleQueuePublish(env.DB, msg.body);
+        msg.ack();
+      } catch (e) {
+        console.error('定時發布失敗:', e);
+        msg.retry();
+      }
+    }
+  },
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE));
+  },
+} satisfies ExportedHandler<Env>;

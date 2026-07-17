@@ -4,9 +4,14 @@
  *
  * 郵件發送: 優先使用 Cloudflare Email Service (send_email binding)
  *           回退到 MailChannels / Resend HTTP API
- * Webhook: 釘釘 ActionCard / 企業微信 Markdown / 通用 JSON
+ * Webhook:  釘釘 ActionCard / 企業微信 Markdown / 通用 JSON
+ *
+ * Flagship 功能開關:
+ *   notify_mail_enabled     - 郵件通知總開關
+ *   notify_webhook_enabled  - Webhook 通知總開關
+ *   關閉後，對應通知邏輯完全不執行，後台也不顯示相關按鈕
  */
-import type { D1Database, KVNamespace, SendEmail } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, SendEmail, Flagship } from '@cloudflare/workers-types';
 import { okData, ok, err } from '../utils/response';
 
 /** 通知字段 (label + value 鍵值對) */
@@ -254,6 +259,7 @@ export async function triggerNotify(
   db: D1Database,
   kv: KVNamespace | null,
   emailBinding: SendEmail | null,
+  flags: Flagship | null,
   category: 'message' | 'form' | 'comment',
   formName: string,
   fields: NotifyField[],
@@ -269,19 +275,31 @@ export async function triggerNotify(
     const site = await getSite(db);
     const detailUrl = buildAdminUrl(site.domain, category);
 
+    // Flagship 功能開關檢查 (未配置 Flagship 時默認啟用)
+    let mailEnabled = true;
+    let webhookEnabled = true;
+    if (flags) {
+      mailEnabled = await flags.getBooleanValue('notify_mail_enabled', true, { category });
+      webhookEnabled = await flags.getBooleanValue('notify_webhook_enabled', true, { category });
+    }
+
     // 郵件通知
-    const mailSwitch = category === 'message' ? 'message_send_mail' : category === 'form' ? 'form_send_mail' : 'comment_send_mail';
-    const mailTo = cfg(configs, 'message_send_to');
-    if (cfg(configs, mailSwitch) === '1' && mailTo) {
-      const html = buildNotifyEmailHtml(site.name, site.logo, formName, fields, meta);
-      const result = await sendNotifyMail(configs, emailBinding, mailTo, `新通知：${formName}`, html);
-      await logNotify(db, 'mail', result.success, result.error || `${formName} -> ${mailTo}`);
+    if (mailEnabled) {
+      const mailSwitch = category === 'message' ? 'message_send_mail' : category === 'form' ? 'form_send_mail' : 'comment_send_mail';
+      const mailTo = cfg(configs, 'message_send_to');
+      if (cfg(configs, mailSwitch) === '1' && mailTo) {
+        const html = buildNotifyEmailHtml(site.name, site.logo, formName, fields, meta);
+        const result = await sendNotifyMail(configs, emailBinding, mailTo, `新通知：${formName}`, html);
+        await logNotify(db, 'mail', result.success, result.error || `${formName} -> ${mailTo}`);
+      }
     }
 
     // Webhook 推送
-    const webhookResult = await sendWebhook(configs, category, formName, fields, meta, detailUrl);
-    if (webhookResult.success || (webhookResult.error && !webhookResult.error.includes('未啟用'))) {
-      await logNotify(db, 'webhook', webhookResult.success, webhookResult.error || `${formName} -> webhook`);
+    if (webhookEnabled) {
+      const webhookResult = await sendWebhook(configs, category, formName, fields, meta, detailUrl);
+      if (webhookResult.success || (webhookResult.error && !webhookResult.error.includes('未啟用'))) {
+        await logNotify(db, 'webhook', webhookResult.success, webhookResult.error || `${formName} -> webhook`);
+      }
     }
   } catch (e) {
     console.error('通知觸發失敗:', e);

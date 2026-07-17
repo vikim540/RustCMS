@@ -11,7 +11,7 @@
  *
  * 所有 SQL 均使用 D1 binding 的參數化查詢, 禁止字符串拼接值
  */
-import type { D1Database, KVNamespace, SendEmail, ExecutionContext } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, SendEmail, ExecutionContext, Flagship } from '@cloudflare/workers-types';
 import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
 import { triggerNotify, type NotifyField } from './notify';
@@ -710,6 +710,7 @@ export async function handleSubmitMessage(
   kv: KVNamespace | null,
   emailBinding: SendEmail | null,
   ctx: ExecutionContext | null,
+  flags: Flagship | null,
   userIp: string,
   userAgent: string,
   sourceUrl: string,
@@ -764,7 +765,7 @@ export async function handleSubmitMessage(
       { label: '手機', value: body.mobile || '' },
       { label: '留言內容', value: content },
     ];
-    const notifyPromise = triggerNotify(db, kv, emailBinding, 'message', '在線留言', fields, userIp, userAgent, sourceUrl);
+    const notifyPromise = triggerNotify(db, kv, emailBinding, flags, 'message', '在線留言', fields, userIp, userAgent, sourceUrl);
     if (ctx) {
       ctx.waitUntil(notifyPromise);
     } else {
