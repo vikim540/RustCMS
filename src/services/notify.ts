@@ -328,3 +328,74 @@ export async function handleTestWebhook(db: D1Database, kv: KVNamespace, body: {
   await logNotify(db, 'webhook', result.success, result.error || `測試 Webhook -> ${webhookUrl}`);
   return result.success ? ok('測試 Webhook 推送成功') : err(`Webhook 推送失敗: ${result.error}`, 1005);
 }
+
+/**
+ * 版本更新自動通知 — Pages 部署後前端 Dashboard 自動調用。
+ * 比對 KV 中存儲的「已通知版本」與前端傳入的最新版本，
+ * 若不同則自動推送釘釘 webhook 並更新 KV。
+ *
+ * @param db  D1 數據庫
+ * @param kv  KV 緩存（用於存儲 last_notified_version）
+ * @param body  { version: string, date: string, changes: string }
+ */
+export async function handleVersionNotify(
+  db: D1Database,
+  kv: KVNamespace,
+  body: { version?: string; date?: string; changes?: string },
+): Promise<Response> {
+  const { version, date, changes } = body;
+  if (!version) return err('缺少 version 參數', 1001);
+
+  // 從 KV 讀取上次已通知的版本
+  const lastNotified = await kv.get('last_notified_version');
+
+  // 版本相同則跳過（已通知過）
+  if (lastNotified === version) {
+    return okData({ notified: false, reason: '版本已通知過' }, '無需重複通知');
+  }
+
+  // 讀取 webhook 配置
+  const configs = await loadConfigsFromDB(db);
+  const webhookUrl = cfg(configs, 'webhook_url');
+
+  if (!webhookUrl) {
+    // webhook 未配置，仍更新 KV 避免重複嘗試
+    await kv.put('last_notified_version', version);
+    return okData({ notified: false, reason: 'webhook_url 未配置' }, 'Webhook 未配置，跳過通知');
+  }
+
+  const ts = nowStr();
+  const platform = detectPlatform(webhookUrl);
+
+  // 構建釘釘 ActionCard 消息
+  const text = `## RustCMS ${version} 版本更新\n\n**部署時間**: ${date || ts}\n\n### 更新內容\n\n${changes || '無詳細說明'}\n\n> 域名: cms.vikim.eu.org\n> 後台: rbootcms.cmer.eu.org`;
+
+  const payload: Record<string, unknown> = {
+    msgtype: 'actionCard',
+    actionCard: { title: `RustCMS ${version} 版本更新`, text, btnOrientation: '0' },
+  };
+
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await resp.json() as { errcode?: number; errmsg?: string };
+
+    if (result.errcode === 0) {
+      // 推送成功，更新 KV 記錄
+      await kv.put('last_notified_version', version);
+      await logNotify(db, 'webhook', true, `版本更新通知: ${version} 已自動推送至${platform}`);
+      return okData({ notified: true, version, platform }, '版本更新通知已自動推送');
+    } else {
+      await logNotify(db, 'webhook', false, `版本更新通知失敗: ${result.errmsg}`);
+      return err(`Webhook 推送失敗: ${result.errmsg}`, 1005);
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知錯誤';
+    await logNotify(db, 'webhook', false, `版本更新通知異常: ${msg}`);
+    return err(`Webhook 推送異常: ${msg}`, 1005);
+  }
+}

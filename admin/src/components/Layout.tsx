@@ -97,8 +97,10 @@ const NAV_GROUPS: NavGroup[] = [
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
-  // 預設所有分組展開
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  // 預設所有分組收起，僅「文章內容」展開
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(NAV_GROUPS.filter((g) => g.title !== '文章內容').map((g) => g.title)),
+  )
   // 模型列表（掛載時載入一次）
   const [models, setModels] = useState<Model[]>([])
   // 當前用戶信息（用於側邊欄權限過濾）

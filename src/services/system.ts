@@ -931,12 +931,22 @@ export async function handleListBackups(
 
     const backups = result.files
       .filter((f) => f.key.endsWith('.sql'))
-      .map((f) => ({
-        filename: f.key.replace(BACKUP_PREFIX, ''),
-        key: f.key,
-        size: f.size,
-        lastModified: f.lastModified,
-      }));
+      .map((f) => {
+        // 從文件名解析建立時間 (backup_YYYYMMDDHHmmss.sql)
+        const match = f.key.match(/backup_(\d{14})\.sql/);
+        let date = f.lastModified || '';
+        if (match) {
+          const s = match[1];
+          // 轉為 YYYY-MM-DD HH:mm:ss 格式
+          date = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}`;
+        }
+        return {
+          filename: f.key.replace(BACKUP_PREFIX, ''),
+          key: f.key,
+          size: f.size,
+          date,
+        };
+      });
 
     return okData(backups, '成功');
   } catch (e) {
@@ -1034,6 +1044,13 @@ export async function handleCreateBackup(
 
     // 上傳到 R2/S3
     await s3PutObject(s3Config, backupKey, data, 'application/sql');
+
+    // 記錄備份日誌
+    try {
+      await db.prepare(
+        'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
+      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB)`, '127.0.0.1', now, 'system').run();
+    } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     return okData(
       {

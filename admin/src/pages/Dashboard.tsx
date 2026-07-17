@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.2.0',
+    date: '2026-07-17 16:53:59',
+    icon: '🚀',
+    latest: true,
+    changes: '資料庫備份建立時間修復（從文件名解析精確時間 + 記錄備份日誌）；側邊導航菜單默認收起僅文章內容展開；版本更新自動通知機制（Pages 部署後 Dashboard 自動觸發釘釘 webhook，KV 記錄已通知版本避免重複推送）',
+  },
+  {
     version: 'v1.1.0',
     date: '2026-07-17 16:40:37',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '時區修復：創建 src/utils/datetime.ts 統一 UTC+8 香港時區，替換全部 8 個 service 文件的 nowStr 本地定義；登錄 IP 記錄修復（CF-Connecting-IP 提取 + SQL 更新 last_login_ip）；菜單 FontAwesome 圖標清理（migration 0003 將 fa-* 轉為 emoji + 前端過濾）；系統日誌大幅增強：操作日誌中間件自動記錄所有 admin 寫操作（content/security/error 分類）+ 全局錯誤處理器記錄錯誤日誌 + 前端新增內容/安全/錯誤三個日誌 Tab；多值配置改為 TagInput 標籤式輸入（CORS 域名自動剝離 http/https + IP 黑白名單批量導入 + 郵件收件人標籤管理）；媒體庫污染內容管理修復（移除 handleUpload 中的 ay_content 插入 + scode != 過濾 + migration 0004 清理已有記錄）；AGENTS.md 精簡重構（刪除文件修改記錄/日誌命令/性能預算/免費額度等運維內容）',
   },
   {
@@ -164,6 +171,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/vectorize/reindex', desc: '重建向量索引', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-mail', desc: '測試郵件發送', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-webhook', desc: '測試 Webhook 推送', auth: true },
+  { method: 'POST', path: '/api/v1/admin/notify/version-check', desc: '版本更新自動通知（Dashboard 自動觸發）', auth: true },
   { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
@@ -237,6 +245,22 @@ export default function Dashboard() {
         })
       })
       .catch(() => {})
+  }, [])
+
+  // 🚀 版本更新自動通知 — Pages 部署後首次打開 Dashboard 時自動觸發
+  // 比對 KV 中的 last_notified_version，若不同則自動推送釘釘 webhook
+  useEffect(() => {
+    const latestVersion = VERSIONS.find((v) => v.latest)
+    if (!latestVersion) return
+    api
+      .post('/admin/notify/version-check', {
+        version: latestVersion.version,
+        date: latestVersion.date,
+        changes: latestVersion.changes,
+      })
+      .catch(() => {
+        /* 通知失敗靜默處理，不影響 Dashboard 正常使用 */
+      })
   }, [])
 
   /** 統計卡片配置 */
