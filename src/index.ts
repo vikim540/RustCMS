@@ -18,7 +18,7 @@ import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Fla
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission } from './services/auth';
-import { okData, err } from './utils/response';
+import { ok, okData, err } from './utils/response';
 import * as authService from './services/auth';
 import * as configService from './services/config';
 import * as sortService from './services/sort';
@@ -32,6 +32,7 @@ import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from '
 import { apiCache, clearContentCache, clearConfigCache } from './services/cache';
 import * as vectorizeService from './services/vectorize';
 import * as schedulerService from './services/scheduler';
+import { getAllFlags, setFlagEnabled, autoRouteProtection } from './services/flags';
 
 /** Worker 環境綁定 */
 export interface Env {
@@ -969,76 +970,43 @@ app.post('/api/v1/admin/vectorize/reindex', async (c) => {
   return vectorizeService.reindexAllArticles(c.env.AI, c.env.ARTICLE_INDEX, c.env.DB);
 });
 
-// ===== Flagship 功能開關查詢 =====
-// 混合模式: Flagship 已配置時讀取 Flagship, 否則回退到 D1 配置
-const FLAG_DEFS = [
-  { key: 'notify_mail_enabled', label: '郵件通知', defaultValue: true },
-  { key: 'notify_webhook_enabled', label: 'Webhook通知', defaultValue: true },
-];
+// ===== 功能開關（標準化：註冊表驅動 + API 攔截 + 前端聯動）=====
 
+// 自動路由保護：攔截註冊表中 protectedRoutes 定義的端點
+app.use('/api/v1/*', autoRouteProtection());
+
+// 查詢所有功能開關狀態
 app.get('/api/v1/admin/flags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-
-  const flagshipConfigured = !!c.env.FLAGS;
-
-  // Flagship 未配置時從 D1 讀取 (回退模式, 可在設置頁切換)
-  let d1Configs: Record<string, string> = {};
-  if (!flagshipConfigured) {
-    const result = await c.env.DB.prepare('SELECT name, value FROM ay_config WHERE name IN (?, ?)')
-      .bind(FLAG_DEFS[0].key, FLAG_DEFS[1].key)
-      .all<{ name: string; value: string }>();
-    for (const row of result.results) {
-      d1Configs[row.name] = row.value;
-    }
-  }
-
-  const results = await Promise.all(
-    FLAG_DEFS.map(async (f) => {
-      let enabled: boolean;
-      if (flagshipConfigured) {
-        enabled = await c.env.FLAGS!.getBooleanValue(f.key, f.defaultValue, {});
-      } else {
-        // D1 回退: 值為 '0' 表示關閉, 其他(含未配置)表示開啟
-        const val = d1Configs[f.key];
-        enabled = val === undefined ? f.defaultValue : val !== '0';
-      }
-      return { key: f.key, label: f.label, enabled, managedBy: flagshipConfigured ? 'flagship' : 'database' };
-    }),
-  );
-  return okData(results, '成功');
+  const flags = await getAllFlags(c.env);
+  return okData(flags, '成功');
 });
 
-// ===== Flagship 功能開關更新 (僅 D1 回退模式可用) =====
+// 切換功能開關（僅 D1 回退模式）
 app.put('/api/v1/admin/flags', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
+  try {
+    const claims = await requireAuth(c);
+    if (!claims) return err('未授權', 2002);
 
-  // Flagship 已配置時不允許從 API 修改 (需在 Cloudflare Dashboard 管理)
-  if (c.env.FLAGS) {
-    return err('Flagship 已配置，請在 Cloudflare Dashboard > Flagship 中管理功能開關', 1005);
+    const body = await c.req.json<{ key?: string; enabled?: boolean }>();
+    if (!body.key || typeof body.enabled !== 'boolean') {
+      return err('缺少 key 或 enabled 參數');
+    }
+
+    const result = await setFlagEnabled(c.env, body.key, body.enabled);
+    if (!result.success) {
+      return err(result.error || '開關切換失敗', 1005);
+    }
+
+    // 清除配置緩存
+    await clearConfigCache(c.env.CONFIG_CACHE);
+
+    return ok(body.enabled ? '功能已開啟' : '功能已關閉');
+  } catch (e) {
+    console.error('flags PUT error:', e);
+    return err(e instanceof Error ? e.message : '開關切換失敗', 1005);
   }
-
-  const body = await c.req.json<{ key?: string; enabled?: boolean }>();
-  if (!body.key || typeof body.enabled !== 'boolean') {
-    return err('缺少 key 或 enabled 參數');
-  }
-
-  // 驗證 key 是否合法
-  const validKey = FLAG_DEFS.find((f) => f.key === body.key);
-  if (!validKey) {
-    return err('無效的功能開關 key', 1001);
-  }
-
-  // 寫入 D1 (冪等: INSERT OR REPLACE)
-  await c.env.DB.prepare('INSERT OR REPLACE INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
-    .bind(body.key, body.enabled ? '1' : '0', '1', 55, validKey.label + '總開關')
-    .run();
-
-  // 清除配置緩存
-  await clearConfigCache(c.env.CONFIG_CACHE);
-
-  return ok(body.enabled ? '功能已開啟' : '功能已關閉');
 });
 
 // ===== 內容更新時清除緩存 + 索引向量 =====
@@ -1049,7 +1017,8 @@ app.notFound((c) => err('接口不存在', 1004));
 // ===== 全局錯誤處理 =====
 app.onError((e, c) => {
   console.error('路由錯誤:', e);
-  return err('內部伺服器錯誤', 500);
+  const msg = e instanceof Error ? e.message : '內部伺服器錯誤';
+  return err(msg, 500);
 });
 
 // ===== Queues 消費者 (定時發布) =====

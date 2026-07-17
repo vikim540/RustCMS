@@ -139,11 +139,14 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 ### 通知服務（Webhook + 郵件 + Flagship 開關）
 
-- **Flagship 開關（混合模式）**：`notify_mail_enabled` / `notify_webhook_enabled` 控制通知總開關
-  - Flagship 已配置（`wrangler.jsonc` 中 `FLAGS` 綁定）：讀取 Flagship 值，唯讀模式（需在 Cloudflare Dashboard 管理）
-  - Flagship 未配置：回退到 D1 `ay_config` 表，可在系統設置頁面直接切換
-  - 關閉後：通知邏輯不執行 + 後台隱藏對應配置區域（郵件服務分組 / Webhook 配置項 / 測試按鈕）
+- **Flagship 開關（標準化架構）**：`notify_mail_enabled` / `notify_webhook_enabled` 控制通知總開關
+  - **註冊表驅動**：所有功能開關在 `src/services/flags.ts` 的 `FLAG_REGISTRY` 中註冊（key/label/description/icon/defaultValue/protectedRoutes）
+  - **混合模式**：Flagship 已配置（`wrangler.jsonc` 中 `FLAGS` 綁定）讀 Flagship，否則 D1 回退
+  - **後端攔截**：`autoRouteProtection()` 中間件自動攔截 `protectedRoutes` 定義的 API 端點，關閉時返回 `code:1004`
+  - **前端組件化**：`FeatureFlagProvider` + `useFeatureFlags` Hook + `<FeatureGate flagKey="...">` 組件，關閉時不渲染子組件
+  - 關閉後：通知邏輯不執行 + API 端點被攔截 + 後台隱藏對應配置區域
   - API：`GET /api/v1/admin/flags` 查詢開關狀態，`PUT /api/v1/admin/flags` 切換開關（僅 D1 回退模式）
+  - **新增大功能時**：在 `FLAG_REGISTRY` 加一條即可，前端/後端/API 攔截全部自動生效
 - **Webhook**（`src/services/notify.ts`）：自動檢測平台（釘釘 ActionCard / 企業微信 Markdown / 通用 JSON），分項開關 `webhook_message|form|comment`
 - **郵件**（`src/services/notify.ts`）：MailChannels / Resend HTTP API（免費第三方）；配置 `mail_from|mail_from_name|mail_provider|mail_api_key`；HTML 模板含漸層 header / 字段表格 / 來源信息 / footer
 - 通知日誌復用 `ay_syslog`（`level` = `mail_success|mail_error|webhook_success|webhook_error`），使用 `ctx.waitUntil()` 確保異步生命週期
@@ -392,3 +395,4 @@ git log --oneline -10
 | 2026-07-17 | 全盤 emoji 圖標；媒體庫選擇器；儀表盤 Tab；CF Email Service；Webhook 修復；日誌 Tab 修正 | AI Assistant |
 | 2026-07-17 | 架構升級：Queues 定時發布、Vectorize 語義搜索、Rate Limiting、Flagship 功能開關、KV API 緩存、Service Bindings、Rust 遷移路徑 | AI Assistant |
 | 2026-07-17 | Flagship 混合模式（D1 回退）+ 設置頁開關整合；儀表盤同步更新規則寫入 AGENTS.md；儀表盤版本/API手冊/系統信息全面更新 | AI Assistant |
+| 2026-07-17 | 功能開關標準化架構：flags.ts 註冊表驅動 + autoRouteProtection API 攔截 + FeatureGate 組件化前端控制 | AI Assistant |

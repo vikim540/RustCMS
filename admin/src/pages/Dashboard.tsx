@@ -43,10 +43,16 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v0.5.0',
+    date: '2026-07-17',
+    icon: '🏗️',
+    latest: true,
+    changes: '功能開關標準化架構：FLAG_REGISTRY 註冊表驅動；autoRouteProtection API 攔截中間件；FeatureFlagProvider + FeatureGate 組件化前端控制；後端關閉功能時 API 返回 404',
+  },
+  {
     version: 'v0.4.0',
     date: '2026-07-17',
     icon: '🚩',
-    latest: true,
     changes: 'Flagship 功能開關整合到系統設置頁面；混合模式（Flagship + D1 回退）支持本地切換；關閉郵件/Webhook 開關後自動隱藏後台對應配置區域',
   },
   {

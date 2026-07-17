@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { useFeatureFlags } from '../hooks/useFeatureFlags'
 
 /** 配置項 */
 interface Config {
@@ -49,14 +50,6 @@ const MAIL_IN_NOTIFY_CONFIGS = new Set([
   'message_send_mail', 'form_send_mail', 'comment_send_mail', 'message_send_to',
 ])
 
-/** 功能開關狀態 */
-interface FlagState {
-  key: string
-  label: string
-  enabled: boolean
-  managedBy: 'flagship' | 'database'
-}
-
 /** 依 sorting 取得所屬分組 */
 function getGroup(sorting: number): ConfigGroup | null {
   return (
@@ -75,8 +68,8 @@ export default function Settings() {
   // 通知測試按鈕 loading 狀態
   const [testMailLoading, setTestMailLoading] = useState(false)
   const [testWebhookLoading, setTestWebhookLoading] = useState(false)
-  // 功能開關狀態 (Flagship / D1 回退)
-  const [flags, setFlags] = useState<FlagState[]>([])
+  // 功能開關（標準化 Hook）
+  const { flags, isEnabled, toggle: toggleFlag, refresh: refreshFlags } = useFeatureFlags()
   const [flagUpdating, setFlagUpdating] = useState<string | null>(null)
 
   /** 拉取全部配置 */
@@ -97,30 +90,17 @@ export default function Settings() {
     }
   }, [])
 
-  /** 拉取功能開關狀態 */
-  const fetchFlags = useCallback(async () => {
-    try {
-      const res = await api.get<FlagState[]>('/admin/flags')
-      const data = Array.isArray(res.data) ? res.data : []
-      setFlags(data)
-    } catch {
-      // 靜默失敗，不影響主配置加載
-    }
-  }, [])
-
   useEffect(() => {
     fetchConfigs()
-    fetchFlags()
-  }, [fetchConfigs, fetchFlags])
+  }, [fetchConfigs])
 
-  /** 切換功能開關 */
+  /** 切換功能開關（標準化） */
   const handleToggleFlag = async (flagKey: string, currentEnabled: boolean) => {
     setFlagUpdating(flagKey)
     setError('')
     setSuccessMsg('')
     try {
-      await api.put('/admin/flags', { key: flagKey, enabled: !currentEnabled })
-      await fetchFlags()
+      await toggleFlag(flagKey, !currentEnabled)
       setSuccessMsg(!currentEnabled ? '功能已開啟' : '功能已關閉，相關配置已隱藏')
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) {
@@ -131,9 +111,9 @@ export default function Settings() {
   }
 
   /** 郵件通知是否啟用 */
-  const mailEnabled = flags.find((f) => f.key === 'notify_mail_enabled')?.enabled ?? true
+  const mailEnabled = isEnabled('notify_mail_enabled')
   /** Webhook 通知是否啟用 */
-  const webhookEnabled = flags.find((f) => f.key === 'notify_webhook_enabled')?.enabled ?? true
+  const webhookEnabled = isEnabled('notify_webhook_enabled')
 
   /** 取得某配置的當前顯示值（優先取本地變更） */
   const currentValue = (config: Config): string => {
@@ -364,7 +344,7 @@ export default function Settings() {
         </div>
       )}
 
-      {/* 🏁 功能開關區域（Flagship / D1 回退） */}
+      {/* 🚩 功能開關區域（註冊表驅動，標準化組件） */}
       {!loading && flags.length > 0 && (
         <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-indigo-100 bg-white/50">
@@ -386,7 +366,7 @@ export default function Settings() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground">
-                        {flag.key === 'notify_mail_enabled' ? '📧' : '🪝'} {flag.label}
+                        {flag.icon} {flag.label}
                       </span>
                       {!flag.enabled && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
@@ -395,9 +375,7 @@ export default function Settings() {
                       )}
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {flag.key === 'notify_mail_enabled'
-                        ? '關閉後隱藏所有郵件相關配置'
-                        : '關閉後隱藏所有 Webhook 相關配置'}
+                      {flag.description}
                     </span>
                   </div>
                   <div className="shrink-0">

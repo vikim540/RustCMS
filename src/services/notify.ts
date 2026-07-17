@@ -13,6 +13,7 @@
  */
 import type { D1Database, KVNamespace, Flagship } from '@cloudflare/workers-types';
 import { okData, ok, err } from '../utils/response';
+import { getFlagEnabled } from './flags';
 
 /** 通知字段 (label + value 鍵值對) */
 export interface NotifyField {
@@ -255,19 +256,10 @@ export async function triggerNotify(
     const site = await getSite(db);
     const detailUrl = buildAdminUrl(site.domain, category);
 
-    // 功能開關: Flagship 已配置時讀取 Flagship, 否則回退到 D1 配置
-    let mailEnabled = true;
-    let webhookEnabled = true;
-    if (flags) {
-      mailEnabled = await flags.getBooleanValue('notify_mail_enabled', true, { category });
-      webhookEnabled = await flags.getBooleanValue('notify_webhook_enabled', true, { category });
-    } else {
-      // D1 回退: 值為 '0' 表示關閉, 其他(含未配置)表示開啟
-      const mailFlag = cfg(configs, 'notify_mail_enabled');
-      const webhookFlag = cfg(configs, 'notify_webhook_enabled');
-      if (mailFlag !== '') mailEnabled = mailFlag !== '0';
-      if (webhookFlag !== '') webhookEnabled = webhookFlag !== '0';
-    }
+    // 功能開關：統一使用 flags.ts 標準化服務
+    const flagEnv = { DB: db, FLAGS: flags ?? undefined };
+    const mailEnabled = await getFlagEnabled(flagEnv, 'notify_mail_enabled');
+    const webhookEnabled = await getFlagEnabled(flagEnv, 'notify_webhook_enabled');
 
     // 郵件通知
     if (mailEnabled) {
