@@ -396,3 +396,4 @@ git log --oneline -10
 | 2026-07-17 | 架構升級：Queues 定時發布、Vectorize 語義搜索、Rate Limiting、Flagship 功能開關、KV API 緩存、Service Bindings、Rust 遷移路徑 | AI Assistant |
 | 2026-07-17 | Flagship 混合模式（D1 回退）+ 設置頁開關整合；儀表盤同步更新規則寫入 AGENTS.md；儀表盤版本/API手冊/系統信息全面更新 | AI Assistant |
 | 2026-07-17 | 功能開關標準化架構：flags.ts 註冊表驅動 + autoRouteProtection API 攔截 + FeatureGate 組件化前端控制 | AI Assistant |
+| 2026-07-17 | 系統設置分區塊獨立保存（每區塊 Save 按鈕）；角色權限改為菜單樹驅動（mcode 聯動）；用戶管理權限預覽；菜單管理 mcode 權限鍵顯示 + scode→mcode 修正；三者關係說明卡片 | AI Assistant |
