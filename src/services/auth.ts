@@ -173,3 +173,16 @@ export function hasPermission(claims: JwtClaims, resource: string, action: strin
   const key = `${resource}:${action}`;
   return claims.permissions.includes(key);
 }
+
+/**
+ * 檢查用戶是否有指定菜單的訪問權限
+ * 超級管理員跳過所有檢查
+ * 普通用戶檢查 permissions 數組中是否包含該 mcode
+ *
+ * 與 hasPermission 不同, 此函數基於菜單 mcode (如 "M504") 校驗,
+ * 適用於基於菜單的 API 路由權限攔截
+ */
+export function hasMenuPermission(claims: JwtClaims, mcode: string): boolean {
+  if (claims.isSuper) return true;
+  return claims.permissions.includes(mcode);
+}

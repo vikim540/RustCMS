@@ -13,11 +13,11 @@
  *   /api/v1/contents/:id     - 內容詳情
  *   /api/v1/admin/*          - 管理接口 (需 JWT)
  */
-import { Hono } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
-import { isTokenBlacklisted, hasPermission } from './services/auth';
+import { isTokenBlacklisted, hasPermission, hasMenuPermission } from './services/auth';
 import { ok, okData, err } from './utils/response';
 import * as authService from './services/auth';
 import * as configService from './services/config';
@@ -53,7 +53,10 @@ export interface Env {
   'Flagship-service'?: Flagship;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+/** Hono 應用環境類型 (含 Bindings 和 Variables) */
+type AppEnv = { Bindings: Env; Variables: { claims?: JwtClaims } };
+
+const app = new Hono<AppEnv>();
 
 // ===== CORS 中間件 (動態域名校驗, 根據 api_cors_origins 配置) =====
 app.use('*', async (c, next) => {
@@ -116,7 +119,11 @@ app.use('*', async (c, next) => {
 });
 
 // ===== JWT 驗證中間件 =====
-async function requireAuth(c: { env: Env; req: { header: (name: string) => string | null } }): Promise<JwtClaims | null> {
+async function requireAuth(c: Context<AppEnv>): Promise<JwtClaims | null> {
+  // 若已由認證中間件驗證, 直接返回緩存的 claims (避免重複驗證)
+  const cached = c.get('claims');
+  if (cached) return cached;
+
   const authHeader = c.req.header('Authorization');
   const token = extractToken(authHeader);
   if (!token) return null;
@@ -129,6 +136,59 @@ async function requireAuth(c: { env: Env; req: { header: (name: string) => strin
   if (blacklisted) return null;
 
   return claims;
+}
+
+// ===== 菜單權限攔截中間件 =====
+
+/** 模塊級緩存: 菜單 URL → mcode 映射 (避免每次請求查詢數據庫) */
+let urlMcodeCache: Map<string, string> | null = null;
+
+/**
+ * 查詢數據庫中所有菜單的 URL → mcode 映射 (模塊級緩存)
+ * 菜單變更後需調用 clearUrlMcodeCache() 清除緩存
+ */
+async function getUrlMcodeMap(db: D1Database): Promise<Map<string, string>> {
+  if (urlMcodeCache) return urlMcodeCache;
+  const result = await db
+    .prepare("SELECT mcode, url FROM ay_menu WHERE url IS NOT NULL AND url != ''")
+    .all<{ mcode: string; url: string }>();
+  const map = new Map<string, string>();
+  for (const row of result.results) {
+    if (row.url) map.set(row.url, row.mcode);
+  }
+  urlMcodeCache = map;
+  return map;
+}
+
+/** 清除 URL → mcode 緩存 (菜單 CRUD 後調用) */
+function clearUrlMcodeCache(): void {
+  urlMcodeCache = null;
+}
+
+/**
+ * 菜單權限攔截中間件
+ * 根據菜單 URL 查詢對應 mcode, 檢查 JWT claims.permissions 是否包含該 mcode
+ * - 超級管理員跳過所有檢查
+ * - 找不到 mcode 時放行 (避免誤攔)
+ * - 未認證請求放行 (由 requireAuth 處理)
+ *
+ * @param menuUrl 菜單 URL (如 '/admin/system/user', '/admin/content/model')
+ */
+function requireMenuPermission(menuUrl: string): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const claims = c.get('claims');
+    if (!claims) return await next(); // 未認證由 requireAuth 處理
+    if (claims.isSuper) return await next(); // 超級管理員跳過
+
+    const map = await getUrlMcodeMap(c.env.DB);
+    const mcode = map.get(menuUrl);
+    if (!mcode) return await next(); // 找不到 mcode 時放行 (避免誤攔)
+
+    if (!hasMenuPermission(claims, mcode)) {
+      return err('無權限訪問此功能', 2005);
+    }
+    await next();
+  };
 }
 
 // ===== 健康檢查 =====
@@ -213,6 +273,30 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
   return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body);
 });
+
+// ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
+// 在 requireMenuPermission 之前執行, 將驗證後的 claims 存入上下文
+// 未認證請求不放行 (由各 handler 中的 requireAuth 返回 401)
+app.use('/api/v1/admin/*', async (c, next) => {
+  const claims = await requireAuth(c);
+  if (claims) {
+    c.set('claims', claims);
+  }
+  await next();
+});
+
+// ===== 後台管理 - 菜單權限攔截中間件 =====
+// 按菜單 URL 查詢 mcode, 檢查 JWT claims.permissions 是否包含該 mcode
+// 超級管理員跳過; 找不到 mcode 時放行 (避免誤攔)
+// 不攔截通用接口: /flags, /stats, /notify/*, /upload, /media 等 (所有登錄用戶可用)
+app.use('/api/v1/admin/users/*', requireMenuPermission('/admin/system/user'));
+app.use('/api/v1/admin/roles/*', requireMenuPermission('/admin/system/role'));
+app.use('/api/v1/admin/menus/*', requireMenuPermission('/admin/system/menu'));
+app.use('/api/v1/admin/logs/*', requireMenuPermission('/admin/system/syslog'));
+app.use('/api/v1/admin/database/*', requireMenuPermission('/admin/system/database'));
+app.use('/api/v1/admin/storage/*', requireMenuPermission('/admin/system/storage'));
+app.use('/api/v1/admin/configs/*', requireMenuPermission('/admin/system/config'));
+app.use('/api/v1/admin/models/*', requireMenuPermission('/admin/content/model'));
 
 // ===== 後台管理接口 - 內容管理 =====
 app.get('/api/v1/admin/contents', async (c) => {
@@ -879,7 +963,10 @@ app.post('/api/v1/admin/menus', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return systemService.handleCreateMenu(c.env.DB, body);
+  const result = await systemService.handleCreateMenu(c.env.DB, body);
+  // 清除 URL→mcode 緩存 (菜單新增後)
+  clearUrlMcodeCache();
+  return result;
 });
 
 app.put('/api/v1/admin/menus/:id', async (c) => {
@@ -887,14 +974,20 @@ app.put('/api/v1/admin/menus/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return systemService.handleUpdateMenu(c.env.DB, id, body);
+  const result = await systemService.handleUpdateMenu(c.env.DB, id, body);
+  // 清除 URL→mcode 緩存 (菜單更新後)
+  clearUrlMcodeCache();
+  return result;
 });
 
 app.delete('/api/v1/admin/menus/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return systemService.handleDeleteMenu(c.env.DB, id);
+  const result = await systemService.handleDeleteMenu(c.env.DB, id);
+  // 清除 URL→mcode 緩存 (菜單刪除後)
+  clearUrlMcodeCache();
+  return result;
 });
 
 // ===== 後台管理接口 - 系統日誌 =====

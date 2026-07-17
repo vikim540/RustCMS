@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, setToken } from '../lib/api'
+import { api, setToken, setUserInfo } from '../lib/api'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -14,8 +14,27 @@ export default function Login() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.post<{ token: string; user: { id: number; username: string } }>('/auth/login', { username, password })
+      const res = await api.post<{
+        token: string
+        user: {
+          id: number
+          ucode: string
+          username: string
+          realname: string
+          isSuper: boolean
+          permissions: string[]
+        }
+      }>('/auth/login', { username, password })
       setToken(res.data!.token)
+      // 緩存用戶信息（用於側邊欄權限過濾）
+      setUserInfo({
+        id: res.data!.user.id,
+        ucode: res.data!.user.ucode,
+        username: res.data!.user.username,
+        realname: res.data!.user.realname || '',
+        isSuper: res.data!.user.isSuper,
+        permissions: res.data!.user.permissions || [],
+      })
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : '登錄失敗')

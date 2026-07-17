@@ -11,7 +11,7 @@
  */
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 
 /** 功能開關狀態（與後端 flags.ts FLAG_REGISTRY 對應） */
 export interface FlagState {
@@ -39,6 +39,8 @@ export function FeatureFlagProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false)
 
   const refresh = useCallback(async () => {
+    // 未登錄時不獲取功能開關（避免 /login 頁面 401 無限刷新）
+    if (!getToken()) return
     setRefreshing(true)
     try {
       const res = await api.get<FlagState[]>('/admin/flags')

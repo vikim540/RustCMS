@@ -19,6 +19,37 @@ export function clearToken(): void {
   localStorage.removeItem('cms_token')
 }
 
+/** 用戶信息（登錄後緩存，用於側邊欄權限過濾） */
+export interface UserInfo {
+  id: number
+  ucode: string
+  username: string
+  realname: string
+  isSuper: boolean
+  permissions: string[]
+}
+
+/** 保存用戶信息 */
+export function setUserInfo(info: UserInfo): void {
+  localStorage.setItem('cms_user', JSON.stringify(info))
+}
+
+/** 獲取用戶信息 */
+export function getUserInfo(): UserInfo | null {
+  const raw = localStorage.getItem('cms_user')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as UserInfo
+  } catch {
+    return null
+  }
+}
+
+/** 清除用戶信息 */
+export function clearUserInfo(): void {
+  localStorage.removeItem('cms_user')
+}
+
 /** 統一 API 響應格式 */
 export interface ApiResponse<T = unknown> {
   code: number
@@ -43,7 +74,11 @@ async function request<T>(
 
   if (res.status === 401) {
     clearToken()
-    window.location.href = '/login'
+    clearUserInfo()
+    // 避免在 /login 頁面觸發無限刷新
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
     throw new Error('登錄已過期,請重新登錄')
   }
 

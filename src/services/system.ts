@@ -313,7 +313,43 @@ export async function handleResetPassword(
 // ay_role.levels 存儲逗號分隔權限, ay_role_level 存儲逐條權限
 // ============================================================================
 
-/** 角色列表 (分頁, ORDER BY id ASC) */
+/**
+ * 查詢所有角色權限數量 (rcode → COUNT)
+ * 一條 SQL 查詢 ay_role_level, 按 rcode 分組統計
+ * 返回 Map<rcode, levelCount>
+ */
+async function loadLevelCountMap(db: D1Database): Promise<Map<string, number>> {
+  const result = await db
+    .prepare('SELECT rcode, COUNT(*) as cnt FROM ay_role_level GROUP BY rcode')
+    .all<{ rcode: string; cnt: number }>();
+  const map = new Map<string, number>();
+  for (const row of result.results) {
+    map.set(row.rcode, row.cnt);
+  }
+  return map;
+}
+
+/**
+ * 查詢所有用戶的 rcodes, 統計每個 rcode 被引用次數
+ * 因 rcodes 是逗號分隔字符串, 需在 JS 中解析統計
+ * 返回 Map<rcode, userCount>
+ */
+async function loadUserCountMap(db: D1Database): Promise<Map<string, number>> {
+  const result = await db
+    .prepare('SELECT rcodes FROM ay_user')
+    .all<{ rcodes: string | null }>();
+  const map = new Map<string, number>();
+  for (const u of result.results) {
+    if (!u.rcodes) continue;
+    const codes = u.rcodes.split(',').map((c) => c.trim()).filter(Boolean);
+    for (const code of codes) {
+      map.set(code, (map.get(code) || 0) + 1);
+    }
+  }
+  return map;
+}
+
+/** 角色列表 (分頁, ORDER BY id ASC, 含用戶數 userCount 和權限數 levelCount) */
 export async function handleListRoles(
   db: D1Database,
   params: URLSearchParams,
@@ -324,20 +360,41 @@ export async function handleListRoles(
   const listResult = await db
     .prepare('SELECT * FROM ay_role ORDER BY id ASC LIMIT ? OFFSET ?')
     .bind(pagination.pagesize, off)
-    .all();
+    .all<{ rcode: string }>();
 
   const countResult = await db.prepare('SELECT COUNT(*) as total FROM ay_role').first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
-  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
+  // 查詢用戶數和權限數映射
+  const [userCountMap, levelCountMap] = await Promise.all([
+    loadUserCountMap(db),
+    loadLevelCountMap(db),
+  ]);
+
+  // 合併到角色列表
+  const roles = listResult.results.map((role) => ({
+    ...role,
+    userCount: userCountMap.get(role.rcode) || 0,
+    levelCount: levelCountMap.get(role.rcode) || 0,
+  }));
+
+  return okList(roles, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
-/** 全部啟用角色列表 (用於下拉選擇, 無分頁) */
+/** 全部啟用角色列表 (用於下拉選擇, 無分頁, 含權限數 levelCount) */
 export async function handleListRolesAll(db: D1Database): Promise<Response> {
   const result = await db
     .prepare("SELECT id, rcode, name, description FROM ay_role WHERE status = '1' ORDER BY id ASC")
-    .all();
-  return okData(result.results, '成功');
+    .all<{ rcode: string }>();
+
+  const levelCountMap = await loadLevelCountMap(db);
+
+  const roles = result.results.map((role) => ({
+    ...role,
+    levelCount: levelCountMap.get(role.rcode) || 0,
+  }));
+
+  return okData(roles, '成功');
 }
 
 /** 角色詳情 (包含權限級別列表) */

@@ -397,3 +397,5 @@ git log --oneline -10
 | 2026-07-17 | Flagship 混合模式（D1 回退）+ 設置頁開關整合；儀表盤同步更新規則寫入 AGENTS.md；儀表盤版本/API手冊/系統信息全面更新 | AI Assistant |
 | 2026-07-17 | 功能開關標準化架構：flags.ts 註冊表驅動 + autoRouteProtection API 攔截 + FeatureGate 組件化前端控制 | AI Assistant |
 | 2026-07-17 | 系統設置分區塊獨立保存（每區塊 Save 按鈕）；角色權限改為菜單樹驅動（mcode 聯動）；用戶管理權限預覽；菜單管理 mcode 權限鍵顯示 + scode→mcode 修正；三者關係說明卡片 | AI Assistant |
+| 2026-07-17 | API 菜單權限攔截：requireMenuPermission 中間件（URL→mcode 緩存 + claims.permissions 校驗）；auth.ts 新增 hasMenuPermission；角色列表 API 增加 userCount/levelCount；認證中間件設置 claims 上下文 | AI Assistant |
+| 2026-07-17 | 登錄頁無限刷新修復（401 守衛 + 無 Token 跳過 flags 獲取 + 401 不重定向 /login）；系統用戶改為單選角色（radio UI）；角色管理增加權限數/用戶數列 + 系統角色徽章；側邊欄按 mcode 權限過濾 + 用戶信息顯示；後端內容排序改為 PbootCMS 邏輯（istop DESC, isrecommend DESC, isheadline DESC, sorting ASC, date DESC, id DESC）；內容排序支持內聯修改 + 置頂/推薦行視覺指示；幻燈片增加分組標籤 + 自定義分組名（localStorage）；儀表板版本日期補時分秒 + 香港時區 | AI Assistant |

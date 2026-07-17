@@ -58,10 +58,10 @@ export async function handleListContents(
     binds.push(isrecommend);
   }
 
-  // 排序
+  // 排序（PbootCMS 邏輯：置頂 > 推薦 > 頭條 > 自定義排序 > 日期 > ID）
   const orderClause = order === 'visits' ? 'c.visits DESC, c.id DESC'
-    : order === 'sorting' ? 'c.sorting ASC, c.id DESC'
-    : 'c.date DESC, c.id DESC';
+    : order === 'sorting' ? 'c.istop DESC, c.isrecommend DESC, c.isheadline DESC, c.sorting ASC, c.id DESC'
+    : 'c.istop DESC, c.isrecommend DESC, c.isheadline DESC, c.sorting ASC, c.date DESC, c.id DESC';
 
   const whereClause = conditions.join(' AND ');
   const off = offset(pagination);
@@ -156,7 +156,7 @@ export async function handleAdminListContents(
   const whereClause = conditions.join(' AND ');
   const off = offset(pagination);
 
-  const listSql = `SELECT * FROM ay_content WHERE ${whereClause} ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`;
+  const listSql = `SELECT * FROM ay_content WHERE ${whereClause} ORDER BY istop DESC, isrecommend DESC, isheadline DESC, sorting ASC, date DESC, id DESC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
   const countSql = `SELECT COUNT(*) as total FROM ay_content WHERE ${whereClause}`;
@@ -226,9 +226,16 @@ export async function handleUpdateContent(
   const binds: (string | number)[] = [];
 
   for (const field of allowedFields) {
-    if (body[field] !== undefined && typeof body[field] === 'string') {
-      sets.push(`${field} = ?`);
-      binds.push(body[field] as string);
+    if (body[field] !== undefined) {
+      const val = body[field];
+      // sorting 為整數類型，其餘為字串
+      if (field === 'sorting' && typeof val === 'number') {
+        sets.push(`${field} = ?`);
+        binds.push(String(val));
+      } else if (typeof val === 'string') {
+        sets.push(`${field} = ?`);
+        binds.push(val);
+      }
     }
   }
 

@@ -227,16 +227,15 @@ export default function Users() {
     }
   }
 
-  /** 切換角色選擇 */
-  const toggleRole = (rcode: string) => {
+  /** 單選角色（同一時間只能分配一個角色） */
+  const selectRole = (rcode: string) => {
     setForm((f) => ({
       ...f,
-      rcodes: f.rcodes.includes(rcode)
-        ? f.rcodes.filter((r) => r !== rcode)
-        : [...f.rcodes, rcode],
+      // 再次點擊已選角色 → 取消選擇；否則替換為新選擇
+      rcodes: f.rcodes[0] === rcode ? [] : [rcode],
     }))
     // 選中角色時預載入其權限
-    if (!form.rcodes.includes(rcode)) {
+    if (form.rcodes[0] !== rcode) {
       loadRolePermissions([rcode])
     }
   }
@@ -329,7 +328,7 @@ export default function Users() {
           <p className="font-medium mb-1">用戶如何獲得菜單訪問權限</p>
           <p className="text-green-600 text-xs leading-relaxed">
             為用戶分配角色 → 角色包含菜單權限（在角色管理中配置）→ 用戶即可訪問對應菜單。
-            一個用戶可分配多個角色，權限取併集。
+            每個用戶僅能分配一個角色。
           </p>
         </div>
       </div>
@@ -570,7 +569,7 @@ export default function Users() {
                     <span className="text-sm">🎭</span>
                     <span className="text-sm font-medium">角色分配</span>
                     <span className="text-xs text-muted-foreground">
-                      已選 {form.rcodes.length} 個角色
+                      {form.rcodes.length > 0 ? `已選：${roles.find((r) => r.rcode === form.rcodes[0])?.name ?? form.rcodes[0]}` : '請選擇一個角色'}
                     </span>
                   </div>
                   <button
@@ -609,18 +608,18 @@ export default function Users() {
                               ? 'border-primary bg-primary/5'
                               : 'border-gray-200 hover:border-gray-300 hover:bg-accent/30',
                           )}
-                          onClick={() => toggleRole(role.rcode)}
+                          onClick={() => selectRole(role.rcode)}
                         >
-                          {/* 複選框 */}
+                          {/* 單選框（radio 樣式） */}
                           <div
                             className={cn(
-                              'flex items-center justify-center w-5 h-5 rounded border-2 transition-all shrink-0',
+                              'flex items-center justify-center w-5 h-5 rounded-full border-2 transition-all shrink-0',
                               isSelected
-                                ? 'bg-primary border-primary text-white'
-                                : 'bg-white border-gray-300',
+                                ? 'border-primary'
+                                : 'border-gray-300',
                             )}
                           >
-                            {isSelected && <span className="text-xs">✓</span>}
+                            {isSelected && <span className="w-2.5 h-2.5 rounded-full bg-primary" />}
                           </div>
 
                           {/* 角色信息 */}
@@ -665,7 +664,7 @@ export default function Users() {
                       <span className="text-sm">📊</span>
                       <span className="text-sm font-medium">有效權限預覽</span>
                       <span className="text-xs text-muted-foreground">
-                        （{form.rcodes.length} 個角色合併，共 {effectivePerms.size} / {totalMenuCount} 個菜單）
+                        （共 {effectivePerms.size} / {totalMenuCount} 個菜單）
                       </span>
                       {permissionLoading && (
                         <span className="animate-spin inline-block text-sm text-muted-foreground">🔄</span>

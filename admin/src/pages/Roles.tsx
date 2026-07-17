@@ -9,6 +9,10 @@ interface Role {
   rcode: string
   description: string
   status: string
+  /** 該角色被多少用戶引用 */
+  userCount?: number
+  /** 該角色有多少條權限 */
+  levelCount?: number
 }
 
 /** 角色詳情（含權限） */
@@ -435,6 +439,8 @@ export default function Roles() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">角色名稱</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">代碼</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">描述</th>
+                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">權限數</th>
+                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">用戶數</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">狀態</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
                 </tr>
@@ -446,9 +452,41 @@ export default function Roles() {
                     className="border-b last:border-0 hover:bg-accent/50 transition-colors"
                   >
                     <td className="px-4 py-3 text-muted-foreground">{item.id}</td>
-                    <td className="px-4 py-3 font-medium">{item.name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{item.name}</span>
+                        {/* 系統角色標識 */}
+                        {item.name.includes('超級') && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-normal">
+                            系統
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{item.rcode}</td>
                     <td className="px-4 py-3 text-muted-foreground">{item.description || '-'}</td>
+                    {/* 權限數 */}
+                    <td className="px-4 py-3 text-center">
+                      <span className={cn(
+                        'inline-block px-2 py-0.5 rounded text-xs font-medium',
+                        (item.levelCount ?? 0) > 0
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-400',
+                      )}>
+                        {item.levelCount ?? 0}
+                      </span>
+                    </td>
+                    {/* 用戶數 */}
+                    <td className="px-4 py-3 text-center">
+                      <span className={cn(
+                        'inline-block px-2 py-0.5 rounded text-xs font-medium',
+                        (item.userCount ?? 0) > 0
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-gray-100 text-gray-400',
+                      )}>
+                        {item.userCount ?? 0}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={cn(

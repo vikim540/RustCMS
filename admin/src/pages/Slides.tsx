@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
+import { cn } from '../lib/utils'
 
 /** 幻燈片數據結構 */
 interface Slide {
@@ -38,6 +39,33 @@ const EMPTY_FORM: SlideForm = {
   sorting: 0,
 }
 
+/** localStorage key for group name mapping */
+const GROUP_NAMES_KEY = 'cms_slide_group_names'
+
+/** 從 localStorage 讀取分組名稱映射 */
+function loadGroupNames(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(GROUP_NAMES_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** 保存分組名稱映射到 localStorage */
+function saveGroupNames(names: Record<string, string>): void {
+  try {
+    localStorage.setItem(GROUP_NAMES_KEY, JSON.stringify(names))
+  } catch {
+    // ignore
+  }
+}
+
+/** 獲取分組顯示名稱 */
+function getGroupDisplayName(gid: string, groupNames: Record<string, string>): string {
+  return groupNames[gid] || `分組 ${gid}`
+}
+
 export default function Slides() {
   const [slides, setSlides] = useState<Slide[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +78,15 @@ export default function Slides() {
   const [form, setForm] = useState<SlideForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
+
+  // 分組狀態
+  const [activeGroup, setActiveGroup] = useState<string>('all')
+  const [groupNames, setGroupNames] = useState<Record<string, string>>({})
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [groupNameInput, setGroupNameInput] = useState('')
+  const [newGroupMode, setNewGroupMode] = useState(false)
+  const [newGroupId, setNewGroupId] = useState('')
+  const [newGroupName, setNewGroupName] = useState('')
 
   /** 載入幻燈片列表 */
   const fetchSlides = useCallback(async () => {
@@ -68,6 +105,58 @@ export default function Slides() {
   useEffect(() => {
     fetchSlides()
   }, [fetchSlides])
+
+  // 載入分組名稱
+  useEffect(() => {
+    setGroupNames(loadGroupNames())
+  }, [])
+
+  // 提取所有唯一分組 ID（按數值排序）
+  const uniqueGroups = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of slides) {
+      set.add(s.gid ?? '0')
+    }
+    return Array.from(set).sort((a, b) => {
+      const na = parseInt(a, 10)
+      const nb = parseInt(b, 10)
+      if (isNaN(na) || isNaN(nb)) return a.localeCompare(b)
+      return na - nb
+    })
+  }, [slides])
+
+  // 按當前選中分組過濾幻燈片
+  const filteredSlides = useMemo(() => {
+    if (activeGroup === 'all') return slides
+    return slides.filter((s) => (s.gid ?? '0') === activeGroup)
+  }, [slides, activeGroup])
+
+  // 保存分組名稱
+  const handleSaveGroupName = (gid: string) => {
+    const name = groupNameInput.trim()
+    const updated = { ...groupNames }
+    if (name) {
+      updated[gid] = name
+    } else {
+      delete updated[gid]
+    }
+    setGroupNames(updated)
+    saveGroupNames(updated)
+    setEditingGroupId(null)
+  }
+
+  // 新增分組
+  const handleAddGroup = () => {
+    const gid = newGroupId.trim()
+    const name = newGroupName.trim()
+    if (!gid || !name) return
+    const updated = { ...groupNames, [gid]: name }
+    setGroupNames(updated)
+    saveGroupNames(updated)
+    setNewGroupMode(false)
+    setNewGroupId('')
+    setNewGroupName('')
+  }
 
   /** 開啟新增對話框 */
   const openCreate = () => {
@@ -164,6 +253,131 @@ export default function Slides() {
         </div>
       )}
 
+      {/* 分組標籤欄 */}
+      {!loading && slides.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setActiveGroup('all')}
+            className={cn(
+              'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+              activeGroup === 'all'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-secondary-foreground hover:bg-accent',
+            )}
+          >
+            全部 <span className="ml-1 opacity-70">({slides.length})</span>
+          </button>
+          {uniqueGroups.map((gid) => {
+            const count = slides.filter((s) => (s.gid ?? '0') === gid).length
+            const isActive = activeGroup === gid
+            const isEditing = editingGroupId === gid
+            return (
+              <div key={gid} className="inline-flex items-center">
+                {isEditing ? (
+                  <div className="inline-flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={groupNameInput}
+                      onChange={(e) => setGroupNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveGroupName(gid)
+                        if (e.key === 'Escape') setEditingGroupId(null)
+                      }}
+                      onBlur={() => handleSaveGroupName(gid)}
+                      placeholder="分組名稱"
+                      className="px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring w-28"
+                      autoFocus
+                    />
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center group">
+                    <button
+                      onClick={() => setActiveGroup(gid)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-l-md text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground hover:bg-accent',
+                      )}
+                    >
+                      {getGroupDisplayName(gid, groupNames)}
+                      <span className="ml-1 opacity-70">({count})</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingGroupId(gid)
+                        setGroupNameInput(groupNames[gid] || '')
+                      }}
+                      className={cn(
+                        'px-1.5 py-1.5 rounded-r-md text-xs transition-colors border-l',
+                        isActive
+                          ? 'bg-primary/80 text-primary-foreground hover:bg-primary/60'
+                          : 'bg-secondary/80 text-muted-foreground hover:bg-accent',
+                      )}
+                      title="編輯分組名稱"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {/* 新增分組 */}
+          {newGroupMode ? (
+            <div className="inline-flex items-center gap-1">
+              <input
+                type="text"
+                value={newGroupId}
+                onChange={(e) => setNewGroupId(e.target.value)}
+                placeholder="ID"
+                className="px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring w-16"
+              />
+              <input
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddGroup()
+                  if (e.key === 'Escape') {
+                    setNewGroupMode(false)
+                    setNewGroupId('')
+                    setNewGroupName('')
+                  }
+                }}
+                placeholder="分組名稱"
+                className="px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring w-28"
+                autoFocus
+              />
+              <button
+                onClick={handleAddGroup}
+                className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:opacity-90"
+              >
+                ✅
+              </button>
+              <button
+                onClick={() => {
+                  setNewGroupMode(false)
+                  setNewGroupId('')
+                  setNewGroupName('')
+                }}
+                className="px-2 py-1 text-xs text-muted-foreground hover:bg-accent rounded-md"
+              >
+                ❌
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setNewGroupMode(true)}
+              className="px-3 py-1.5 rounded-md text-sm text-muted-foreground border border-dashed hover:bg-accent transition-colors"
+              title="新增分組名稱映射"
+            >
+              ➕ 新增分組
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
@@ -187,14 +401,23 @@ export default function Slides() {
         </div>
       )}
 
+      {/* 當前分組無數據 */}
+      {!loading && slides.length > 0 && filteredSlides.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+          <span className="text-3xl mb-3 opacity-50">📭</span>
+          <p>此分組下暫無幻燈片</p>
+        </div>
+      )}
+
       {/* 幻燈片表格 */}
-      {!loading && slides.length > 0 && (
+      {!loading && filteredSlides.length > 0 && (
         <div className="bg-white rounded-lg border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-secondary/50">
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">分組</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">圖片</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">標題</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">副標題</th>
@@ -204,12 +427,17 @@ export default function Slides() {
                 </tr>
               </thead>
               <tbody>
-                {slides.map((item) => (
+                {filteredSlides.map((item) => (
                   <tr
                     key={item.id}
                     className="border-b last:border-0 hover:bg-accent/50 transition-colors"
                   >
                     <td className="px-4 py-3 text-muted-foreground">{item.id}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                        {getGroupDisplayName(item.gid ?? '0', groupNames)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       {item.pic ? (
                         <img
@@ -361,14 +589,40 @@ export default function Slides() {
               {/* 分組 + 排序 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1.5">分組</label>
-                  <input
-                    type="text"
-                    value={form.gid}
-                    onChange={(e) => setForm((f) => ({ ...f, gid: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="分組 ID"
-                  />
+                  <label className="block text-sm font-medium mb-1.5">
+                    分組
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">
+                      ({getGroupDisplayName(form.gid, groupNames)})
+                    </span>
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={uniqueGroups.includes(form.gid) ? form.gid : '__custom__'}
+                      onChange={(e) => {
+                        if (e.target.value !== '__custom__') {
+                          setForm((f) => ({ ...f, gid: e.target.value }))
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm bg-white"
+                    >
+                      {uniqueGroups.includes(form.gid) ? null : (
+                        <option value="__custom__">自定義: {form.gid}</option>
+                      )}
+                      {uniqueGroups.map((gid) => (
+                        <option key={gid} value={gid}>
+                          {getGroupDisplayName(gid, groupNames)} (ID: {gid})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={form.gid}
+                      onChange={(e) => setForm((f) => ({ ...f, gid: e.target.value }))}
+                      className="w-20 px-2 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm text-center"
+                      placeholder="ID"
+                      title="直接輸入分組 ID"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1.5">排序</label>

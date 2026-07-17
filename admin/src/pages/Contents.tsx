@@ -160,6 +160,9 @@ export default function Contents() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
   const [models, setModels] = useState<Model[]>([])
+  // 排序內聯編輯
+  const [editingSortId, setEditingSortId] = useState<number | null>(null)
+  const [sortValue, setSortValue] = useState('')
 
   // 從 URL query 讀取 mcode（模型分類）
   const [searchParams, setSearchParams] = useSearchParams()
@@ -361,6 +364,28 @@ export default function Contents() {
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : '切換推薦失敗')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // 內聯修改排序（數值越小越靠前，參考 PbootCMS sorting ASC 邏輯）
+  const handleSortSave = async (id: number) => {
+    const val = parseInt(sortValue, 10)
+    if (isNaN(val) || val < 0 || val > 9999) {
+      setEditingSortId(null)
+      return
+    }
+    setEditingSortId(null)
+    if (val === contents.find((c) => c.id === id)?.sorting) return
+    setActionLoading(id)
+    try {
+      await api.put(`/admin/contents/${id}`, { sorting: val })
+      setContents((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, sorting: val } : c)),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '排序更新失敗')
     } finally {
       setActionLoading(null)
     }
@@ -585,7 +610,7 @@ export default function Contents() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">標題</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">欄目</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">狀態</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">排序</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground" title="點擊數值可修改，數值越小越靠前">排序 ↕</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">訪問量</th>
                 <th className="px-4 py-3 text-center font-medium text-muted-foreground">置頂</th>
                 <th className="px-4 py-3 text-center font-medium text-muted-foreground">推薦</th>
@@ -622,6 +647,8 @@ export default function Contents() {
                       className={cn(
                         'border-b last:border-0 hover:bg-accent/50 transition-colors',
                         isSelected && 'bg-blue-50/50',
+                        item.istop === '1' && !isSelected && 'bg-blue-50/30',
+                        item.isrecommend === '1' && item.istop !== '1' && !isSelected && 'bg-orange-50/30',
                       )}
                     >
                       {/* 勾選框 */}
@@ -700,8 +727,43 @@ export default function Contents() {
                           {badge.label}
                         </span>
                       </td>
-                      {/* 排序 */}
-                      <td className="px-4 py-3 text-muted-foreground">{item.sorting}</td>
+                      {/* 排序（點擊可內聯修改，數值越小越靠前） */}
+                      <td className="px-4 py-3">
+                        {editingSortId === item.id ? (
+                          <input
+                            type="number"
+                            value={sortValue}
+                            onChange={(e) => setSortValue(e.target.value)}
+                            onBlur={() => handleSortSave(item.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSortSave(item.id)
+                              }
+                              if (e.key === 'Escape') setEditingSortId(null)
+                            }}
+                            className="w-16 px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-ring text-center"
+                            autoFocus
+                          />
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditingSortId(item.id)
+                              setSortValue(String(item.sorting ?? 0))
+                            }}
+                            disabled={actionLoading === item.id || isTrash}
+                            className={cn(
+                              'px-2 py-1 rounded transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed',
+                              item.sorting === 0
+                                ? 'text-amber-600 font-medium'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                            )}
+                            title="點擊修改排序（數值越小越靠前）"
+                          >
+                            {item.sorting ?? 0}
+                          </button>
+                        )}
+                      </td>
                       {/* 訪問量 */}
                       <td className="px-4 py-3 text-muted-foreground">{item.visits ?? 0}</td>
                       {/* 置頂切換鈕 */}

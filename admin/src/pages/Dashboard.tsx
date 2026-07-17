@@ -40,66 +40,78 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'system', label: '系統信息', icon: '⚙️' },
 ]
 
-/** 版本更新歷史（硬編碼） */
+/** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
-    version: 'v0.7.0',
-    date: '2026-07-17',
-    icon: '🚩',
+    version: 'v0.9.0',
+    date: '2026-07-17 15:11:27',
+    icon: '🔧',
     latest: true,
+    changes: '登錄頁無限刷新修復（FeatureFlagProvider 401 守衛 + 無 Token 跳過 + 401 不重定向至 /login）；系統用戶改為單選角色（radio UI）；角色管理增加權限數/用戶數列 + 系統角色徽章；側邊欄按 mcode 權限過濾 + 用戶信息顯示；後端內容排序改為 PbootCMS 邏輯（istop DESC, isrecommend DESC, isheadline DESC, sorting ASC, date DESC, id DESC）；內容排序支持內聯修改；幻燈片增加分組標籤 + 自定義分組名（localStorage）',
+  },
+  {
+    version: 'v0.8.0',
+    date: '2026-07-17 14:50:00',
+    icon: '🔐',
+    changes: 'API 菜單權限攔截：requireMenuPermission 中間件按 ay_menu URL 查詢 mcode 進行權限校驗；auth 新增 hasMenuPermission 函數基於 mcode 校驗；角色列表 API 增加 userCount（用戶引用數）和 levelCount（權限數）；認證中間件設置 claims 到上下文避免重複驗證；菜單 CRUD 後清除 URL→mcode 緩存',
+  },
+  {
+    version: 'v0.7.0',
+    date: '2026-07-17 14:30:00',
+    icon: '🚩',
     changes: 'Flagship 重命名：app 改為 Rustcms-service；flag 鍵改為 mail_enabled / webhook_enabled；Worker 綁定變量改為 Flagship-service（含連字符需用 env["Flagship-service"] 括號語法）；wrangler.jsonc 配置 app_id 綁定；D1 回退數據同步更新',
   },
   {
     version: 'v0.6.0',
-    date: '2026-07-17',
+    date: '2026-07-17 14:04:41',
     icon: '🎨',
     changes: '系統設置分區塊獨立保存（無需整頁刷新）；角色權限改為菜單樹驅動（與菜單管理聯動）；用戶管理增加權限預覽（所選角色合併權限）；菜單管理顯示 mcode 權限鍵並修正 scode→mcode 字段；三頁面增加三者關係說明卡片',
   },
   {
     version: 'v0.5.0',
-    date: '2026-07-17',
+    date: '2026-07-17 13:45:03',
     icon: '🏗️',
     changes: '功能開關標準化架構：FLAG_REGISTRY 註冊表驅動；autoRouteProtection API 攔截中間件；FeatureFlagProvider + FeatureGate 組件化前端控制；後端關閉功能時 API 返回 404',
   },
   {
     version: 'v0.4.0',
-    date: '2026-07-17',
+    date: '2026-07-17 13:05:49',
     icon: '🚩',
     changes: 'Flagship 功能開關整合到系統設置頁面；混合模式（Flagship + D1 回退）支持本地切換；關閉郵件/Webhook 開關後自動隱藏後台對應配置區域',
   },
   {
     version: 'v0.3.0',
-    date: '2026-07-17',
+    date: '2026-07-17 11:55:08',
     icon: '🏗️',
     changes: '架構升級：Queues 定時發布、Vectorize 語義搜索（768維 bge-base-zh-v1.5）、Rate Limiting 速率限制（4組綁定）、KV API 響應緩存、Service Bindings 內部通信、Flagship 功能開關、Cron 每 15 分鐘掃描待發布文章',
   },
   {
     version: 'v0.2.1',
-    date: '2026-07-17',
+    date: '2026-07-17 10:50:00',
     icon: '🐛',
     changes: '移除 CF Email Service（需 Workers Paid），改用 MailChannels/Resend 免費方案；清理 D1 重複數據（43 條配置 + 1 個管理員 + 25 個菜單）；創建 Vectorize 索引 article-semantic-search',
   },
   {
     version: 'v0.2.0',
-    date: '2026-07-17',
+    date: '2026-07-17 10:31:34',
     icon: '✨',
     changes: '郵件服務改用 Cloudflare Email Service Workers API；修復 Webhook 異步通知生命週期；側邊欄模型子菜單去重',
   },
   {
     version: 'v0.1.2',
-    date: '2026-07-17',
+    date: '2026-07-17 08:57:45',
     icon: '✨',
     changes: '內容按模型分類管理；圖片上傳支持外鏈；API CORS 動態域名校驗；通知服務（Webhook + 郵件）',
   },
   {
     version: 'v0.1.1',
-    date: '2026-07-16',
+    date: '2026-07-16 14:30:00',
     icon: '🐛',
     changes: '修復 D1 遷移字段缺失問題；前端 Pages 部署優化',
   },
   {
     version: 'v0.1.0',
-    date: '2026-07-16',
+    date: '2026-07-16 10:00:00',
     icon: '🎉',
     changes: '項目初始版本，基於 PbootCMS 3.2.12 數據庫結構的 TypeScript + Hono CMS',
   },
@@ -127,6 +139,11 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/upload', desc: '文件上傳 (multipart/form-data)', auth: true },
   { method: 'GET', path: '/api/v1/admin/configs', desc: '系統配置', auth: true },
   { method: 'PUT', path: '/api/v1/admin/configs', desc: '更新配置', auth: true },
+  { method: 'GET', path: '/api/v1/admin/users', desc: '用戶列表', auth: true },
+  { method: 'GET', path: '/api/v1/admin/roles', desc: '角色列表 (含 userCount/levelCount)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/roles/all', desc: '全部啟用角色 (含 levelCount)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/menus', desc: '菜單樹', auth: true },
+  { method: 'GET', path: '/api/v1/admin/logs', desc: '系統日誌 (?level=)', auth: true },
   { method: 'GET', path: '/api/v1/admin/flags', desc: '查詢功能開關狀態', auth: true },
   { method: 'PUT', path: '/api/v1/admin/flags', desc: '切換功能開關 (D1回退模式)', auth: true },
   { method: 'GET', path: '/api/v1/admin/scheduler/list', desc: '定時發布列表', auth: true },
@@ -134,6 +151,10 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/vectorize/reindex', desc: '重建向量索引', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-mail', desc: '測試郵件發送', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-webhook', desc: '測試 Webhook 推送', auth: true },
+  { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表', auth: true },
+  { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片', auth: true },
 ]
 
 /** 錯誤碼對照 */
@@ -145,6 +166,7 @@ const ERROR_CODES: { code: number; desc: string; color: string }[] = [
   { code: 2002, desc: '未授權', color: 'red' },
   { code: 2003, desc: 'Token 已過期', color: 'red' },
   { code: 2004, desc: 'Token 已登出', color: 'red' },
+  { code: 2005, desc: '無權限訪問此功能', color: 'red' },
   { code: 4290, desc: '請求過於頻繁 (Rate Limited)', color: 'red' },
 ]
 
