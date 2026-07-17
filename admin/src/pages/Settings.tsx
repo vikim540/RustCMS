@@ -39,6 +39,24 @@ const HIDDEN_CONFIGS = new Set([
   'tpl_html_dir',
 ])
 
+/** Webhook 相關配置項（notify_webhook_enabled 關閉時隱藏） */
+const WEBHOOK_CONFIGS = new Set([
+  'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment',
+])
+
+/** 通知配置分組中的郵件相關配置項（notify_mail_enabled 關閉時隱藏） */
+const MAIL_IN_NOTIFY_CONFIGS = new Set([
+  'message_send_mail', 'form_send_mail', 'comment_send_mail', 'message_send_to',
+])
+
+/** 功能開關狀態 */
+interface FlagState {
+  key: string
+  label: string
+  enabled: boolean
+  managedBy: 'flagship' | 'database'
+}
+
 /** 依 sorting 取得所屬分組 */
 function getGroup(sorting: number): ConfigGroup | null {
   return (
@@ -57,6 +75,9 @@ export default function Settings() {
   // 通知測試按鈕 loading 狀態
   const [testMailLoading, setTestMailLoading] = useState(false)
   const [testWebhookLoading, setTestWebhookLoading] = useState(false)
+  // 功能開關狀態 (Flagship / D1 回退)
+  const [flags, setFlags] = useState<FlagState[]>([])
+  const [flagUpdating, setFlagUpdating] = useState<string | null>(null)
 
   /** 拉取全部配置 */
   const fetchConfigs = useCallback(async () => {
@@ -76,9 +97,43 @@ export default function Settings() {
     }
   }, [])
 
+  /** 拉取功能開關狀態 */
+  const fetchFlags = useCallback(async () => {
+    try {
+      const res = await api.get<FlagState[]>('/admin/flags')
+      const data = Array.isArray(res.data) ? res.data : []
+      setFlags(data)
+    } catch {
+      // 靜默失敗，不影響主配置加載
+    }
+  }, [])
+
   useEffect(() => {
     fetchConfigs()
-  }, [fetchConfigs])
+    fetchFlags()
+  }, [fetchConfigs, fetchFlags])
+
+  /** 切換功能開關 */
+  const handleToggleFlag = async (flagKey: string, currentEnabled: boolean) => {
+    setFlagUpdating(flagKey)
+    setError('')
+    setSuccessMsg('')
+    try {
+      await api.put('/admin/flags', { key: flagKey, enabled: !currentEnabled })
+      await fetchFlags()
+      setSuccessMsg(!currentEnabled ? '功能已開啟' : '功能已關閉，相關配置已隱藏')
+      setTimeout(() => setSuccessMsg(''), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '開關切換失敗')
+    } finally {
+      setFlagUpdating(null)
+    }
+  }
+
+  /** 郵件通知是否啟用 */
+  const mailEnabled = flags.find((f) => f.key === 'notify_mail_enabled')?.enabled ?? true
+  /** Webhook 通知是否啟用 */
+  const webhookEnabled = flags.find((f) => f.key === 'notify_webhook_enabled')?.enabled ?? true
 
   /** 取得某配置的當前顯示值（優先取本地變更） */
   const currentValue = (config: Config): string => {
@@ -173,7 +228,7 @@ export default function Settings() {
 
   const changedCount = Object.keys(changes).length
 
-  /** 依分組切割配置（過濾掉手機版/水印/URL 等不需要的配置項） */
+  /** 依分組切割配置（過濾掉手機版/水印/URL 等不需要的配置項，並根據功能開關隱藏對應區域） */
   const groupedConfigs = useMemo(() => {
     const groups: { group: ConfigGroup; items: Config[] }[] = []
     const others: Config[] = []
@@ -183,6 +238,19 @@ export default function Settings() {
       if (HIDDEN_CONFIGS.has(config.name)) continue
       // 隱藏 sorting 10-19 (手機版) 和 70-79 (水印) 範圍的所有配置
       if ((config.sorting >= 10 && config.sorting <= 19) || (config.sorting >= 70 && config.sorting <= 79)) continue
+
+      // 🏁 功能開關控制：郵件關閉時隱藏郵件相關配置
+      if (!mailEnabled) {
+        // 隱藏整個郵件服務分組 (90-99)
+        if (config.sorting >= 90 && config.sorting <= 99) continue
+        // 隱藏通知配置中的郵件相關項
+        if (MAIL_IN_NOTIFY_CONFIGS.has(config.name)) continue
+      }
+
+      // 🏁 功能開關控制：Webhook 關閉時隱藏 Webhook 相關配置
+      if (!webhookEnabled) {
+        if (WEBHOOK_CONFIGS.has(config.name)) continue
+      }
 
       const group = getGroup(config.sorting)
       if (group) {
@@ -197,10 +265,12 @@ export default function Settings() {
       }
     }
 
-    // 依分組定義順序排列
-    groups.sort((a, b) => a.group.min - b.group.min)
-    return { groups, others }
-  }, [configs])
+    // 依分組定義順序排列，過濾掉所有項目都被隱藏的空分組
+    const visibleGroups = groups
+      .filter((g) => g.items.length > 0)
+      .sort((a, b) => a.group.min - b.group.min)
+    return { groups: visibleGroups, others }
+  }, [configs, mailEnabled, webhookEnabled])
 
   /** 渲染單個配置行 */
   const renderConfigRow = (config: Config) => {
@@ -294,6 +364,94 @@ export default function Settings() {
         </div>
       )}
 
+      {/* 🏁 功能開關區域（Flagship / D1 回退） */}
+      {!loading && flags.length > 0 && (
+        <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-indigo-100 bg-white/50">
+            <span>🚩</span>
+            <h2 className="font-semibold text-indigo-900">功能開關</h2>
+            <span className="text-xs text-indigo-600">
+              （{flags[0]?.managedBy === 'flagship' ? 'Flagship 管理' : '本地管理'}）
+            </span>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {flags.map((flag) => {
+              const isFlagshipManaged = flag.managedBy === 'flagship'
+              const isUpdating = flagUpdating === flag.key
+              return (
+                <div
+                  key={flag.key}
+                  className="flex items-center justify-between gap-4 py-2 border-b last:border-b-0 border-indigo-100"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {flag.key === 'notify_mail_enabled' ? '📧' : '🪝'} {flag.label}
+                      </span>
+                      {!flag.enabled && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
+                          已關閉
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {flag.key === 'notify_mail_enabled'
+                        ? '關閉後隱藏所有郵件相關配置'
+                        : '關閉後隱藏所有 Webhook 相關配置'}
+                    </span>
+                  </div>
+                  <div className="shrink-0">
+                    {isFlagshipManaged ? (
+                      // Flagship 管理: 唯讀開關 + 提示
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">由 Flagship 管理</span>
+                        <div
+                          className={cn(
+                            'relative inline-flex h-6 w-11 items-center rounded-full',
+                            flag.enabled ? 'bg-primary' : 'bg-muted',
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'inline-block h-4 w-4 transform rounded-full bg-white shadow',
+                              flag.enabled ? 'translate-x-6' : 'translate-x-1',
+                            )}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      // D1 管理: 可切換開關
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFlag(flag.key, flag.enabled)}
+                        disabled={isUpdating}
+                        className={cn(
+                          'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                          flag.enabled ? 'bg-primary' : 'bg-muted',
+                          isUpdating && 'opacity-50 cursor-not-allowed',
+                        )}
+                        aria-label={flag.enabled ? '關閉' : '開啟'}
+                      >
+                        {isUpdating ? (
+                          <span className="animate-spin inline-block text-sm absolute left-3.5">🔄</span>
+                        ) : (
+                          <span
+                            className={cn(
+                              'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                              flag.enabled ? 'translate-x-6' : 'translate-x-1',
+                            )}
+                          />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
@@ -331,36 +489,40 @@ export default function Settings() {
               <div className="px-4">
                 {items.map(renderConfigRow)}
               </div>
-              {/* 通知配置分組：測試按鈕 */}
-              {group.min === 50 && (
+              {/* 通知配置分組：測試按鈕（根據功能開關顯示） */}
+              {group.min === 50 && (mailEnabled || webhookEnabled) && (
                 <div className="px-4 py-3 border-t flex flex-wrap items-center gap-2 bg-secondary/10">
                   <span className="text-xs text-muted-foreground mr-1">通知測試：</span>
-                  <button
-                    type="button"
-                    onClick={handleTestMail}
-                    disabled={testMailLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {testMailLoading ? (
-                      <span className="animate-spin inline-block text-sm">🔄</span>
-                    ) : (
-                      <span className="text-sm">📤</span>
-                    )}
-                    測試郵件
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleTestWebhook}
-                    disabled={testWebhookLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {testWebhookLoading ? (
-                      <span className="animate-spin inline-block text-sm">🔄</span>
-                    ) : (
-                      <span className="text-sm">🪝</span>
-                    )}
-                    測試 Webhook
-                  </button>
+                  {mailEnabled && (
+                    <button
+                      type="button"
+                      onClick={handleTestMail}
+                      disabled={testMailLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {testMailLoading ? (
+                        <span className="animate-spin inline-block text-sm">🔄</span>
+                      ) : (
+                        <span className="text-sm">📤</span>
+                      )}
+                      測試郵件
+                    </button>
+                  )}
+                  {webhookEnabled && (
+                    <button
+                      type="button"
+                      onClick={handleTestWebhook}
+                      disabled={testWebhookLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {testWebhookLoading ? (
+                        <span className="animate-spin inline-block text-sm">🔄</span>
+                      ) : (
+                        <span className="text-sm">🪝</span>
+                      )}
+                      測試 Webhook
+                    </button>
+                  )}
                 </div>
               )}
             </div>

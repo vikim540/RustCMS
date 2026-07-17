@@ -29,8 +29,8 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | Vectorize | `article-semantic-search`（768維 cosine，中文語義搜索） |
 | Workers AI | 嵌入模型 `@cf/baai/bge-base-zh-v1.5` |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min)、`ADMIN_API_LIMIT`(300/min)、`LOGIN_LIMIT`(5/min)、`FORM_LIMIT`(1/10s) |
-| Flagship | app `cms-service`，flags: `notify_mail_enabled`、`notify_webhook_enabled` |
-| Email Service | `send_email` binding（域名需在 Dashboard 啟用 Email Sending） |
+| Flagship | app `cms-service`，flags: `notify_mail_enabled`、`notify_webhook_enabled`（未配置時 D1 回退） |
+| Email | MailChannels / Resend HTTP API（免費第三方，CF Email Service 需 Workers Paid） |
 | Pages | `cms-admin`（管理後台 SPA），域名 `rbootcms.cmer.eu.org` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms`（零延遲內部通信） |
 | GitHub | `https://github.com/vikim540/RustCMS.git` |
@@ -57,8 +57,8 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 - 佇列：**Queues**（定時文章發布，`delaySeconds` 上限 24 小時，配合 Cron 每 15 分鐘掃描）
 - 語義搜索：**Vectorize + Workers AI**（`@cf/baai/bge-base-zh-v1.5` 中文嵌入模型，768 維）
 - 速率限制：**Rate Limiting bindings**（零網絡開銷，本地計數器）
-- 功能開關：**Flagship**（動態切換郵件/Webhook 通知，無需重新部署）
-- 郵件：**Cloudflare Email Service**（`send_email` binding，優先）+ MailChannels/Resend（回退）
+- 功能開關：**Flagship**（動態切換郵件/Webhook 通知，未配置時 D1 回退，可在設置頁切換）
+- 郵件：**MailChannels / Resend** HTTP API（免費第三方，CF Email Service 需 Workers Paid）
 - 前端：**React 18 + Vite + Tailwind CSS**（Cloudflare Pages）
 - 內部通信：**Service Bindings**（Pages ↔ Worker 零延遲，不走公網）
 - 序列化：原生 JSON
@@ -70,7 +70,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | `sqlx` / 數據庫驅動 | D1 binding API |
 | `jsonwebtoken` | Web Crypto API 自實現 HS256 |
 | `bcrypt` / `argon2` | 雙 MD5（`md5(md5(password))`） |
-| `nodemailer` / SMTP 庫 | CF Email Service / MailChannels / Resend HTTP API |
+| `nodemailer` / SMTP 庫 | MailChannels / Resend HTTP API（免費第三方） |
 | `node-fetch` / `axios` | 全局 `fetch()` |
 | `lucide-react` / 字體圖標 | emoji（全盤使用 emoji 替代 SVG/字體圖標） |
 | 圖片處理庫 / 模板引擎 | 無（水印交靜態生成層） |
@@ -115,7 +115,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 - 語義搜索：`/api/v1/search?q=關鍵詞&topK=10&threshold=0.7`
 - 定時發布：`/api/v1/admin/scheduler/list`、`/api/v1/admin/scheduler/schedule`
 - Vectorize 索引：`/api/v1/admin/vectorize/reindex`
-- Flagship 開關查詢：`/api/v1/admin/flags`
+- Flagship 開關查詢/切換：`/api/v1/admin/flags`（GET 查詢，PUT 切換 — 僅 D1 回退模式）
 - 通知測試：`/api/v1/admin/notify/test-mail`、`/api/v1/admin/notify/test-webhook`
 
 ---
@@ -139,9 +139,13 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 ### 通知服務（Webhook + 郵件 + Flagship 開關）
 
-- **Flagship 開關**：`notify_mail_enabled` / `notify_webhook_enabled` 控制通知總開關，關閉後通知邏輯不執行
+- **Flagship 開關（混合模式）**：`notify_mail_enabled` / `notify_webhook_enabled` 控制通知總開關
+  - Flagship 已配置（`wrangler.jsonc` 中 `FLAGS` 綁定）：讀取 Flagship 值，唯讀模式（需在 Cloudflare Dashboard 管理）
+  - Flagship 未配置：回退到 D1 `ay_config` 表，可在系統設置頁面直接切換
+  - 關閉後：通知邏輯不執行 + 後台隱藏對應配置區域（郵件服務分組 / Webhook 配置項 / 測試按鈕）
+  - API：`GET /api/v1/admin/flags` 查詢開關狀態，`PUT /api/v1/admin/flags` 切換開關（僅 D1 回退模式）
 - **Webhook**（`src/services/notify.ts`）：自動檢測平台（釘釘 ActionCard / 企業微信 Markdown / 通用 JSON），分項開關 `webhook_message|form|comment`
-- **郵件**（`src/services/notify.ts`）：優先 CF Email Service binding，回退 MailChannels/Resend；配置 `mail_from|mail_from_name`；HTML 模板含漸層 header / 字段表格 / 來源信息 / footer
+- **郵件**（`src/services/notify.ts`）：MailChannels / Resend HTTP API（免費第三方）；配置 `mail_from|mail_from_name|mail_provider|mail_api_key`；HTML 模板含漸層 header / 字段表格 / 來源信息 / footer
 - 通知日誌復用 `ay_syslog`（`level` = `mail_success|mail_error|webhook_success|webhook_error`），使用 `ctx.waitUntil()` 確保異步生命週期
 
 ### 定時文章發布（Queues + Cron）
@@ -321,6 +325,33 @@ git log --oneline -10
 9. Flagship 開關是否檢查？
 10. 內容變更後是否清除 API 緩存？
 11. 圖標是否使用 emoji（非 SVG/字體圖標）？
+12. **是否同步更新了儀表盤的版本更新、API 開發手冊、系統信息？（強制）**
+
+---
+
+## 儀表盤同步更新規則（強制）
+
+> **每次修改代碼後，必須同步更新 `admin/src/pages/Dashboard.tsx` 中的以下三個 Tab，無需用戶提醒。**
+
+### 1. 版本更新 Tab
+
+- 新增版本條目到 `VERSIONS` 數組頂部，設 `latest: true`，舊版本移除 `latest`
+- 格式：`{ version: 'vX.Y.Z', date: 'YYYY-MM-DD', icon: 'emoji', latest: true, changes: '簡述本次修改' }`
+- 版本號規則：主版本（架構變更）/ 次版本（功能新增）/ 修訂號（Bug 修復）
+- `changes` 用中文分號分隔多項修改
+
+### 2. API 開發手冊 Tab
+
+- 新增/修改 API 端點時，同步更新 `API_ENDPOINTS` 數組
+- 格式：`{ method, path, desc, auth }`
+- 新增錯誤碼時，同步更新 `ERROR_CODES` 數組
+- 快速開始示例代碼如有新場景，同步更新 `代碼示例`
+
+### 3. 系統信息 Tab
+
+- 新增/移除 Cloudflare 資源（KV/Queue/Vectorize/RateLimit 等）時，更新 Cloudflare 資源表格
+- 技術棧變更時，更新項目信息卡片
+- 性能預算變更時，更新性能預算卡片
 
 ---
 
@@ -360,3 +391,4 @@ git log --oneline -10
 | 2026-07-17 | 技術棧更正為 TS+Hono；補充通知/CORS/模型分類/圖片外鏈；精簡重構全文；補充環境位置與命令 | AI Assistant |
 | 2026-07-17 | 全盤 emoji 圖標；媒體庫選擇器；儀表盤 Tab；CF Email Service；Webhook 修復；日誌 Tab 修正 | AI Assistant |
 | 2026-07-17 | 架構升級：Queues 定時發布、Vectorize 語義搜索、Rate Limiting、Flagship 功能開關、KV API 緩存、Service Bindings、Rust 遷移路徑 | AI Assistant |
+| 2026-07-17 | Flagship 混合模式（D1 回退）+ 設置頁開關整合；儀表盤同步更新規則寫入 AGENTS.md；儀表盤版本/API手冊/系統信息全面更新 | AI Assistant |

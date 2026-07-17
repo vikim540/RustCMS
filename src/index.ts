@@ -970,22 +970,75 @@ app.post('/api/v1/admin/vectorize/reindex', async (c) => {
 });
 
 // ===== Flagship 功能開關查詢 =====
+// 混合模式: Flagship 已配置時讀取 Flagship, 否則回退到 D1 配置
+const FLAG_DEFS = [
+  { key: 'notify_mail_enabled', label: '郵件通知', defaultValue: true },
+  { key: 'notify_webhook_enabled', label: 'Webhook通知', defaultValue: true },
+];
+
 app.get('/api/v1/admin/flags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  const flags = [
-    { key: 'notify_mail_enabled', label: '郵件通知', defaultValue: true },
-    { key: 'notify_webhook_enabled', label: 'Webhook通知', defaultValue: true },
-  ];
+
+  const flagshipConfigured = !!c.env.FLAGS;
+
+  // Flagship 未配置時從 D1 讀取 (回退模式, 可在設置頁切換)
+  let d1Configs: Record<string, string> = {};
+  if (!flagshipConfigured) {
+    const result = await c.env.DB.prepare('SELECT name, value FROM ay_config WHERE name IN (?, ?)')
+      .bind(FLAG_DEFS[0].key, FLAG_DEFS[1].key)
+      .all<{ name: string; value: string }>();
+    for (const row of result.results) {
+      d1Configs[row.name] = row.value;
+    }
+  }
+
   const results = await Promise.all(
-    flags.map(async (f) => {
-      const enabled = c.env.FLAGS
-        ? await c.env.FLAGS.getBooleanValue(f.key, f.defaultValue, {})
-        : f.defaultValue;
-      return { key: f.key, label: f.label, enabled };
+    FLAG_DEFS.map(async (f) => {
+      let enabled: boolean;
+      if (flagshipConfigured) {
+        enabled = await c.env.FLAGS!.getBooleanValue(f.key, f.defaultValue, {});
+      } else {
+        // D1 回退: 值為 '0' 表示關閉, 其他(含未配置)表示開啟
+        const val = d1Configs[f.key];
+        enabled = val === undefined ? f.defaultValue : val !== '0';
+      }
+      return { key: f.key, label: f.label, enabled, managedBy: flagshipConfigured ? 'flagship' : 'database' };
     }),
   );
   return okData(results, '成功');
+});
+
+// ===== Flagship 功能開關更新 (僅 D1 回退模式可用) =====
+app.put('/api/v1/admin/flags', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+
+  // Flagship 已配置時不允許從 API 修改 (需在 Cloudflare Dashboard 管理)
+  if (c.env.FLAGS) {
+    return err('Flagship 已配置，請在 Cloudflare Dashboard > Flagship 中管理功能開關', 1005);
+  }
+
+  const body = await c.req.json<{ key?: string; enabled?: boolean }>();
+  if (!body.key || typeof body.enabled !== 'boolean') {
+    return err('缺少 key 或 enabled 參數');
+  }
+
+  // 驗證 key 是否合法
+  const validKey = FLAG_DEFS.find((f) => f.key === body.key);
+  if (!validKey) {
+    return err('無效的功能開關 key', 1001);
+  }
+
+  // 寫入 D1 (冪等: INSERT OR REPLACE)
+  await c.env.DB.prepare('INSERT OR REPLACE INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
+    .bind(body.key, body.enabled ? '1' : '0', '1', 55, validKey.label + '總開關')
+    .run();
+
+  // 清除配置緩存
+  await clearConfigCache(c.env.CONFIG_CACHE);
+
+  return ok(body.enabled ? '功能已開啟' : '功能已關閉');
 });
 
 // ===== 內容更新時清除緩存 + 索引向量 =====

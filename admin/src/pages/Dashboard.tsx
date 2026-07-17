@@ -43,10 +43,28 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v0.4.0',
+    date: '2026-07-17',
+    icon: '🚩',
+    latest: true,
+    changes: 'Flagship 功能開關整合到系統設置頁面；混合模式（Flagship + D1 回退）支持本地切換；關閉郵件/Webhook 開關後自動隱藏後台對應配置區域',
+  },
+  {
+    version: 'v0.3.0',
+    date: '2026-07-17',
+    icon: '🏗️',
+    changes: '架構升級：Queues 定時發布、Vectorize 語義搜索（768維 bge-base-zh-v1.5）、Rate Limiting 速率限制（4組綁定）、KV API 響應緩存、Service Bindings 內部通信、Flagship 功能開關、Cron 每 15 分鐘掃描待發布文章',
+  },
+  {
+    version: 'v0.2.1',
+    date: '2026-07-17',
+    icon: '🐛',
+    changes: '移除 CF Email Service（需 Workers Paid），改用 MailChannels/Resend 免費方案；清理 D1 重複數據（43 條配置 + 1 個管理員 + 25 個菜單）；創建 Vectorize 索引 article-semantic-search',
+  },
+  {
     version: 'v0.2.0',
     date: '2026-07-17',
     icon: '✨',
-    latest: true,
     changes: '郵件服務改用 Cloudflare Email Service Workers API；修復 Webhook 異步通知生命週期；側邊欄模型子菜單去重',
   },
   {
@@ -71,12 +89,17 @@ const VERSIONS: VersionEntry[] = [
 
 /** API 接口列表 */
 const API_ENDPOINTS: ApiEndpoint[] = [
-  { method: 'POST', path: '/api/v1/auth/login', desc: '登錄', auth: false },
+  // 認證
+  { method: 'POST', path: '/api/v1/auth/login', desc: '登錄 (5次/分/IP)', auth: false },
   { method: 'GET', path: '/api/v1/auth/profile', desc: '個人信息', auth: true },
+  // 公開接口 (60次/分/IP)
   { method: 'GET', path: '/api/v1/site', desc: '站點信息', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=)', auth: false },
   { method: 'GET', path: '/api/v1/contents/:id', desc: '內容詳情', auth: false },
+  { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.7)', auth: false },
+  { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
+  // 管理接口 (300次/分/用戶)
   { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?mcode=&page=)', auth: true },
   { method: 'POST', path: '/api/v1/admin/contents', desc: '新建內容', auth: true },
   { method: 'PUT', path: '/api/v1/admin/contents/:id', desc: '更新內容', auth: true },
@@ -86,6 +109,13 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/upload', desc: '文件上傳 (multipart/form-data)', auth: true },
   { method: 'GET', path: '/api/v1/admin/configs', desc: '系統配置', auth: true },
   { method: 'PUT', path: '/api/v1/admin/configs', desc: '更新配置', auth: true },
+  { method: 'GET', path: '/api/v1/admin/flags', desc: '查詢功能開關狀態', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/flags', desc: '切換功能開關 (D1回退模式)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/scheduler/list', desc: '定時發布列表', auth: true },
+  { method: 'POST', path: '/api/v1/admin/scheduler/schedule', desc: '設定文章發布時間', auth: true },
+  { method: 'POST', path: '/api/v1/admin/vectorize/reindex', desc: '重建向量索引', auth: true },
+  { method: 'POST', path: '/api/v1/admin/notify/test-mail', desc: '測試郵件發送', auth: true },
+  { method: 'POST', path: '/api/v1/admin/notify/test-webhook', desc: '測試 Webhook 推送', auth: true },
 ]
 
 /** 錯誤碼對照 */
@@ -95,6 +125,9 @@ const ERROR_CODES: { code: number; desc: string; color: string }[] = [
   { code: 1004, desc: '未找到', color: 'yellow' },
   { code: 1005, desc: '操作失敗', color: 'orange' },
   { code: 2002, desc: '未授權', color: 'red' },
+  { code: 2003, desc: 'Token 已過期', color: 'red' },
+  { code: 2004, desc: 'Token 已登出', color: 'red' },
+  { code: 4290, desc: '請求過於頻繁 (Rate Limited)', color: 'red' },
 ]
 
 /** HTTP 方法對應的樣式 */
@@ -513,7 +546,12 @@ const resp = await fetch('/api/v1/admin/contents?page=1', {
   headers: { Authorization: \`Bearer \${localStorage.getItem('cms_token')}\` }
 })
 const result = await resp.json()
-console.log(result.data) // 內容列表`}</code>
+console.log(result.data) // 內容列表
+
+// 語義搜索（公開接口，無需認證）
+const search = await fetch('/api/v1/search?q=保養眼睛&topK=10&threshold=0.7')
+const { data: articles } = await search.json()
+console.log(articles) // 相似文章列表`}</code>
               </pre>
             </section>
 
@@ -647,6 +685,100 @@ console.log(result.data) // 內容列表`}</code>
                       </td>
                       <td className="px-4 py-3">
                         <code className="font-mono text-foreground">cms-admin</code>
+                        <span className="text-muted-foreground mx-2">·</span>
+                        <a
+                          href="https://rbootcms.cmer.eu.org"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                        >
+                          <span>rbootcms.cmer.eu.org</span>
+                          <span>🔗</span>
+                        </a>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>📦</span>
+                          <span>KV 命名空間</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground">CONFIG_CACHE</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">TOKEN_BLACKLIST</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">API_CACHE</code>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>📬</span>
+                          <span>Queues</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground">publish-queue</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">publish-dlq</code>
+                        <span className="text-muted-foreground mx-2 text-xs">定時發布</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>🧠</span>
+                          <span>Vectorize</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground">article-semantic-search</code>
+                        <span className="text-muted-foreground mx-2 text-xs">768維 cosine · bge-base-zh-v1.5</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>🛡️</span>
+                          <span>Rate Limiting</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground text-xs">PUBLIC 60/min</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">ADMIN 300/min</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">LOGIN 5/min</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">FORM 1/10s</code>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>🔗</span>
+                          <span>Service Binding</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground">cms-admin → rust-cms</code>
+                        <span className="text-muted-foreground mx-2 text-xs">零延遲內部通信</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>🚩</span>
+                          <span>Flagship</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground text-xs">notify_mail_enabled</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">notify_webhook_enabled</code>
+                        <span className="text-muted-foreground mx-2 text-xs">D1 回退模式</span>
                       </td>
                     </tr>
                   </tbody>

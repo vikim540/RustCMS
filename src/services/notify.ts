@@ -255,12 +255,18 @@ export async function triggerNotify(
     const site = await getSite(db);
     const detailUrl = buildAdminUrl(site.domain, category);
 
-    // Flagship 功能開關檢查 (未配置 Flagship 時默認啟用)
+    // 功能開關: Flagship 已配置時讀取 Flagship, 否則回退到 D1 配置
     let mailEnabled = true;
     let webhookEnabled = true;
     if (flags) {
       mailEnabled = await flags.getBooleanValue('notify_mail_enabled', true, { category });
       webhookEnabled = await flags.getBooleanValue('notify_webhook_enabled', true, { category });
+    } else {
+      // D1 回退: 值為 '0' 表示關閉, 其他(含未配置)表示開啟
+      const mailFlag = cfg(configs, 'notify_mail_enabled');
+      const webhookFlag = cfg(configs, 'notify_webhook_enabled');
+      if (mailFlag !== '') mailEnabled = mailFlag !== '0';
+      if (webhookFlag !== '') webhookEnabled = webhookFlag !== '0';
     }
 
     // 郵件通知
