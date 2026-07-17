@@ -35,117 +35,64 @@ const EMPTY_FORM: RoleForm = {
   levels: [],
 }
 
-/** 權限分組定義 */
-interface PermissionGroup {
-  title: string
-  permissions: { value: string; label: string }[]
+/** 菜單節點（從 /admin/menus 取得） */
+interface MenuNode {
+  id: number
+  mcode: string
+  pcode: string
+  name: string
+  url: string
+  ico: string
+  sorting: number
+  status: string
+  children?: MenuNode[]
 }
 
-/** 權限分組配置 */
-const PERMISSION_GROUPS: PermissionGroup[] = [
-  {
-    title: '內容管理',
-    permissions: [
-      { value: 'content:index', label: '查看' },
-      { value: 'content:add', label: '新增' },
-      { value: 'content:mod', label: '修改' },
-      { value: 'content:del', label: '刪除' },
-      { value: 'content:trash', label: '回收站' },
-      { value: 'content:restore', label: '還原' },
-      { value: 'content:permanent_del', label: '永久刪除' },
-    ],
-  },
-  {
-    title: '欄目管理',
-    permissions: [
-      { value: 'sort:index', label: '查看' },
-      { value: 'sort:add', label: '新增' },
-      { value: 'sort:mod', label: '修改' },
-      { value: 'sort:del', label: '刪除' },
-    ],
-  },
-  {
-    title: '模型管理',
-    permissions: [
-      { value: 'model:index', label: '查看模型' },
-      { value: 'model:add', label: '新增模型' },
-      { value: 'model:mod', label: '修改模型' },
-      { value: 'model:del', label: '刪除模型' },
-      { value: 'extfield:index', label: '查看欄位' },
-      { value: 'extfield:add', label: '新增欄位' },
-      { value: 'extfield:mod', label: '修改欄位' },
-      { value: 'extfield:del', label: '刪除欄位' },
-    ],
-  },
-  {
-    title: '基礎內容',
-    permissions: [
-      { value: 'single:index', label: '查看單頁' },
-      { value: 'single:add', label: '新增單頁' },
-      { value: 'single:mod', label: '修改單頁' },
-      { value: 'single:del', label: '刪除單頁' },
-      { value: 'site:mod', label: '修改站點' },
-      { value: 'company:mod', label: '修改公司' },
-    ],
-  },
-  {
-    title: '擴展內容',
-    permissions: [
-      { value: 'link:index', label: '查看連結' },
-      { value: 'link:add', label: '新增連結' },
-      { value: 'link:mod', label: '修改連結' },
-      { value: 'link:del', label: '刪除連結' },
-      { value: 'slide:index', label: '查看幻燈片' },
-      { value: 'slide:add', label: '新增幻燈片' },
-      { value: 'slide:mod', label: '修改幻燈片' },
-      { value: 'slide:del', label: '刪除幻燈片' },
-      { value: 'tag:index', label: '查看標籤' },
-      { value: 'tag:add', label: '新增標籤' },
-      { value: 'tag:mod', label: '修改標籤' },
-      { value: 'tag:del', label: '刪除標籤' },
-      { value: 'label:index', label: '查看自定義標籤' },
-      { value: 'label:add', label: '新增自定義標籤' },
-      { value: 'label:mod', label: '修改自定義標籤' },
-      { value: 'label:del', label: '刪除自定義標籤' },
-      { value: 'message:index', label: '查看留言' },
-      { value: 'message:mod', label: '修改留言' },
-      { value: 'message:del', label: '刪除留言' },
-    ],
-  },
-  {
-    title: '系統配置',
-    permissions: [
-      { value: 'config:mod', label: '修改配置' },
-      { value: 'storage:mod', label: '修改存儲' },
-    ],
-  },
-  {
-    title: '系統管理',
-    permissions: [
-      { value: 'user:index', label: '查看用戶' },
-      { value: 'user:add', label: '新增用戶' },
-      { value: 'user:mod', label: '修改用戶' },
-      { value: 'user:del', label: '刪除用戶' },
-      { value: 'role:index', label: '查看角色' },
-      { value: 'role:add', label: '新增角色' },
-      { value: 'role:mod', label: '修改角色' },
-      { value: 'role:del', label: '刪除角色' },
-      { value: 'menu:index', label: '查看選單' },
-      { value: 'menu:add', label: '新增選單' },
-      { value: 'menu:mod', label: '修改選單' },
-      { value: 'menu:del', label: '刪除選單' },
-      { value: 'log:index', label: '查看日誌' },
-      { value: 'log:clear', label: '清除日誌' },
-      { value: 'db:backup', label: '資料庫備份' },
-    ],
-  },
-]
+/** 遞迴收集樹中所有 mcode */
+function collectAllMcodes(nodes: MenuNode[]): string[] {
+  const result: string[] = []
+  for (const node of nodes) {
+    result.push(node.mcode)
+    if (node.children?.length) {
+      result.push(...collectAllMcodes(node.children))
+    }
+  }
+  return result
+}
+
+/** 遞迴計算樹中已選中的 mcode 數量 */
+function countSelected(nodes: MenuNode[], selected: Set<string>): number {
+  let count = 0
+  for (const node of nodes) {
+    if (selected.has(node.mcode)) count++
+    if (node.children?.length) {
+      count += countSelected(node.children, selected)
+    }
+  }
+  return count
+}
+
+/** 遞迴計算樹中所有節點數量 */
+function countAll(nodes: MenuNode[]): number {
+  let count = 0
+  for (const node of nodes) {
+    count++
+    if (node.children?.length) {
+      count += countAll(node.children)
+    }
+  }
+  return count
+}
 
 export default function Roles() {
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+
+  // 菜單樹（權限來源）
+  const [menuTree, setMenuTree] = useState<MenuNode[]>([])
+  const [menuLoading, setMenuLoading] = useState(true)
 
   // 對話框狀態
   const [modalOpen, setModalOpen] = useState(false)
@@ -154,8 +101,9 @@ export default function Roles() {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
   const [detailLoading, setDetailLoading] = useState(false)
-  // 權限分組展開狀態
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+
+  // 權限樹展開狀態（頂級菜單 mcode → 是否展開）
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   /** 載入角色列表 */
   const fetchRoles = useCallback(async () => {
@@ -171,53 +119,85 @@ export default function Roles() {
     }
   }, [])
 
+  /** 載入菜單樹（權限來源，與菜單管理頁面共用同一 API） */
+  const fetchMenuTree = useCallback(async () => {
+    setMenuLoading(true)
+    try {
+      const res = await api.get<MenuNode[]>('/admin/menus')
+      const tree = Array.isArray(res.data) ? res.data : []
+      setMenuTree(tree)
+      // 預設展開所有頂級菜單
+      setExpandedGroups(new Set(tree.map((n) => n.mcode)))
+    } catch {
+      /* 菜單載入失敗時靜默處理，權限樹為空 */
+    } finally {
+      setMenuLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchRoles()
-  }, [fetchRoles])
+    fetchMenuTree()
+  }, [fetchRoles, fetchMenuTree])
 
-  /** 切換權限分組展開 */
-  const toggleGroup = (title: string) => {
-    setCollapsedGroups((prev) => {
+  /** 切換頂級分組展開 */
+  const toggleGroup = (mcode: string) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev)
-      if (next.has(title)) next.delete(title)
-      else next.add(title)
+      if (next.has(mcode)) next.delete(mcode)
+      else next.add(mcode)
       return next
     })
   }
 
-  /** 切換權限選擇 */
-  const togglePermission = (value: string) => {
+  /** 切換某菜單權限選擇 */
+  const togglePermission = (mcode: string) => {
     setForm((f) => ({
       ...f,
-      levels: f.levels.includes(value)
-        ? f.levels.filter((l) => l !== value)
-        : [...f.levels, value],
+      levels: f.levels.includes(mcode)
+        ? f.levels.filter((l) => l !== mcode)
+        : [...f.levels, mcode],
     }))
   }
 
-  /** 切換整組權限 */
-  const toggleGroupPermissions = (group: PermissionGroup) => {
-    const allSelected = group.permissions.every((p) => form.levels.includes(p.value))
+  /** 切換整組權限（頂級菜單及其所有子菜單） */
+  const toggleGroupPermissions = (group: MenuNode) => {
+    const allMcodes = [group.mcode, ...collectAllMcodes(group.children ?? [])]
+    const selectedSet = new Set(form.levels)
+    const allSelected = allMcodes.every((m) => selectedSet.has(m))
+
     setForm((f) => {
       let next = [...f.levels]
       if (allSelected) {
         // 取消整組
-        next = next.filter((l) => !group.permissions.some((p) => p.value === l))
+        const toRemove = new Set(allMcodes)
+        next = next.filter((l) => !toRemove.has(l))
       } else {
         // 選中整組
-        for (const p of group.permissions) {
-          if (!next.includes(p.value)) next.push(p.value)
+        for (const m of allMcodes) {
+          if (!next.includes(m)) next.push(m)
         }
       }
       return { ...f, levels: next }
     })
   }
 
+  /** 全選所有權限 */
+  const selectAllPermissions = () => {
+    const allMcodes = collectAllMcodes(menuTree)
+    setForm((f) => ({ ...f, levels: allMcodes }))
+  }
+
+  /** 清空所有權限 */
+  const clearAllPermissions = () => {
+    setForm((f) => ({ ...f, levels: [] }))
+  }
+
   /** 開啟新增對話框 */
   const openCreate = () => {
     setEditTarget(null)
     setForm(EMPTY_FORM)
-    setCollapsedGroups(new Set())
+    setExpandedGroups(new Set(menuTree.map((n) => n.mcode)))
     setActionError('')
     setModalOpen(true)
   }
@@ -232,7 +212,7 @@ export default function Roles() {
       status: item.status ?? '1',
       levels: [],
     })
-    setCollapsedGroups(new Set())
+    setExpandedGroups(new Set(menuTree.map((n) => n.mcode)))
     setActionError('')
     setModalOpen(true)
     setDetailLoading(true)
@@ -297,13 +277,99 @@ export default function Roles() {
     }
   }
 
+  /** 遞迴渲染權限樹節點 */
+  const renderPermissionNode = (node: MenuNode, depth: number): React.ReactNode => {
+    const isSelected = form.levels.includes(node.mcode)
+    const hasChildren = !!node.children && node.children.length > 0
+
+    // 計算子節點選中狀態
+    const childMcodes = hasChildren ? collectAllMcodes(node.children!) : []
+    const selectedChildren = childMcodes.filter((m) => form.levels.includes(m)).length
+    const isPartial = hasChildren && selectedChildren > 0 && selectedChildren < childMcodes.length
+
+    return (
+      <div key={node.mcode}>
+        <div
+          className={cn(
+            'flex items-center gap-2 py-2 px-2 rounded transition-colors hover:bg-accent/40',
+            depth > 0 && 'ml-6',
+          )}
+          style={{ marginLeft: `${depth * 24}px` }}
+        >
+          {/* 展開/收起按鈕 */}
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={() => toggleGroup(node.mcode)}
+              className="p-0.5 rounded hover:bg-accent transition-colors shrink-0"
+            >
+              {expandedGroups.has(node.mcode) ? '⬇️' : '➡️'}
+            </button>
+          ) : (
+            <span className="inline-block w-5 shrink-0" />
+          )}
+
+          {/* 權限複選框 */}
+          <button
+            type="button"
+            onClick={() => hasChildren ? toggleGroupPermissions(node) : togglePermission(node.mcode)}
+            className={cn(
+              'flex items-center justify-center w-5 h-5 rounded border-2 transition-all shrink-0',
+              isSelected
+                ? 'bg-primary border-primary text-white'
+                : isPartial
+                  ? 'bg-primary/30 border-primary'
+                  : 'bg-white border-gray-300 hover:border-primary',
+            )}
+          >
+            {isSelected && <span className="text-xs">✓</span>}
+            {isPartial && !isSelected && <span className="text-xs text-primary">●</span>}
+          </button>
+
+          {/* 菜單圖標 + 名稱 */}
+          <span className="text-sm flex-1 truncate">
+            {node.ico && <span className="mr-1.5">{node.ico}</span>}
+            <span className={cn(isSelected ? 'font-medium' : 'text-muted-foreground')}>
+              {node.name}
+            </span>
+          </span>
+
+          {/* 菜單路徑（權限鍵） */}
+          <span className="text-xs text-muted-foreground font-mono shrink-0">
+            {node.mcode}
+          </span>
+
+          {/* 子節點選中計數 */}
+          {hasChildren && (
+            <span className="text-xs text-muted-foreground shrink-0">
+              {selectedChildren}/{childMcodes.length}
+            </span>
+          )}
+        </div>
+
+        {/* 子節點 */}
+        {hasChildren && expandedGroups.has(node.mcode) && (
+          <div>
+            {node.children!.map((child) => renderPermissionNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const selectedSet = new Set(form.levels)
+  const totalMenuNodes = countAll(menuTree)
+  const selectedCount = selectedSet.size
+
   return (
     <div className="p-6">
       {/* 頁首 */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">角色管理</h1>
-          <p className="text-sm text-muted-foreground mt-1">管理後台角色及其權限</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            管理後台角色，權限與菜單樹聯動 — 角色選中的菜單即為可訪問的功能
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -312,6 +378,19 @@ export default function Roles() {
           <span className="mr-1">➕</span>
           新增角色
         </button>
+      </div>
+
+      {/* 三者關係說明卡片 */}
+      <div className="mb-5 bg-blue-50 border border-blue-200 rounded-lg px-5 py-3.5 flex items-start gap-3">
+        <span className="text-lg shrink-0">💡</span>
+        <div className="text-sm text-blue-800">
+          <p className="font-medium mb-1">角色 / 用戶 / 菜單 三者關係</p>
+          <p className="text-blue-600 text-xs leading-relaxed">
+            <span className="font-medium">菜單管理</span>定義後台可用功能頁面 →
+            <span className="font-medium">角色管理</span>選擇該角色可訪問的菜單（即權限）→
+            <span className="font-medium">用戶管理</span>為用戶分配角色，用戶即可訪問對應菜單
+          </p>
+        </div>
       </div>
 
       {/* 錯誤提示 */}
@@ -387,7 +466,7 @@ export default function Roles() {
                         <button
                           onClick={() => openEdit(item)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="編輯"
+                          title="編輯角色及其菜單權限"
                         >
                           <span className="text-sm">✏️</span>
                           編輯
@@ -414,9 +493,15 @@ export default function Roles() {
       {/* 新增/編輯對話框 */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+            {/* 對話框頭部 */}
             <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white z-10">
-              <h2 className="text-lg font-semibold">{editTarget ? '編輯角色' : '新增角色'}</h2>
+              <div>
+                <h2 className="text-lg font-semibold">{editTarget ? '編輯角色' : '新增角色'}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {editTarget ? '修改角色信息及菜單權限' : '創建新角色並分配菜單權限'}
+                </p>
+              </div>
               <button
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
@@ -424,8 +509,9 @@ export default function Roles() {
                 ❌
               </button>
             </div>
+
             <div className="px-5 py-4 space-y-4">
-              {/* 角色名稱 */}
+              {/* 基本信息 */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1.5">
@@ -442,113 +528,112 @@ export default function Roles() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1.5">
-                    代碼 <span className="text-destructive">*</span>
+                    角色代碼 <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
                     value={form.rcode}
                     onChange={(e) => setForm((f) => ({ ...f, rcode: e.target.value }))}
                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-                    placeholder="角色唯一代碼"
-                    disabled={!!editTarget}
+                    placeholder="如 R101"
                   />
                 </div>
               </div>
-              {/* 描述 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">描述</label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="角色描述（可選）"
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">描述</label>
+                  <input
+                    type="text"
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="角色用途描述"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">狀態</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                  >
+                    <option value="1">啟用</option>
+                    <option value="0">禁用</option>
+                  </select>
+                </div>
               </div>
-              {/* 狀態 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">狀態</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
-                >
-                  <option value="1">啟用</option>
-                  <option value="0">禁用</option>
-                </select>
-              </div>
-              {/* 權限樹 */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium">權限設置</label>
-                  {detailLoading && (
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span className="animate-spin inline-block text-xs">🔄</span>
-                      載入權限中...
+
+              {/* 菜單權限樹 */}
+              <div className="border rounded-md overflow-hidden">
+                {/* 權限樹頭部 */}
+                <div className="flex items-center justify-between px-4 py-3 border-b bg-secondary/30">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📋</span>
+                    <span className="text-sm font-medium">菜單權限</span>
+                    <span className="text-xs text-muted-foreground">
+                      已選 {selectedCount} / {totalMenuNodes} 個菜單
                     </span>
+                    {detailLoading && (
+                      <span className="animate-spin inline-block text-sm text-muted-foreground">🔄</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllPermissions}
+                      className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      全選
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearAllPermissions}
+                      className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                    >
+                      清空
+                    </button>
+                  </div>
+                </div>
+
+                {/* 權限樹內容 */}
+                <div className="max-h-[400px] overflow-y-auto px-2 py-2">
+                  {menuLoading ? (
+                    <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
+                      <span className="animate-spin inline-block mr-2">🔄</span>
+                      載入菜單樹...
+                    </div>
+                  ) : menuTree.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                      <span className="text-2xl mb-2 opacity-50">📋</span>
+                      <p className="text-sm">尚未配置任何菜單</p>
+                      <p className="text-xs mt-1">請先到「菜單管理」創建菜單項</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {menuTree.map((node) => renderPermissionNode(node, 0))}
+                    </div>
                   )}
                 </div>
-                <div className="border rounded-md divide-y max-h-80 overflow-y-auto">
-                  {PERMISSION_GROUPS.map((group) => {
-                    const isCollapsed = collapsedGroups.has(group.title)
-                    const allSelected = group.permissions.every((p) => form.levels.includes(p.value))
-                    const someSelected = group.permissions.some((p) => form.levels.includes(p.value))
-                    return (
-                      <div key={group.title}>
-                        {/* 分組標題 */}
-                        <div className="flex items-center px-3 py-2 bg-secondary/30">
-                          <button
-                            onClick={() => toggleGroup(group.title)}
-                            className="p-0.5 rounded hover:bg-accent transition-colors mr-1.5"
-                            aria-label={isCollapsed ? '展開' : '收起'}
-                          >
-                            {isCollapsed ? (
-                              <span>➡️</span>
-                            ) : (
-                              <span>⬇️</span>
-                            )}
-                          </button>
-                          <label className="flex items-center gap-2 cursor-pointer flex-1">
-                            <input
-                              type="checkbox"
-                              checked={allSelected}
-                              ref={(el) => {
-                                if (el) el.indeterminate = !allSelected && someSelected
-                              }}
-                              onChange={() => toggleGroupPermissions(group)}
-                              className="w-4 h-4 rounded border-input"
-                            />
-                            <span className="text-sm font-medium">{group.title}</span>
-                          </label>
-                          <span className="text-xs text-muted-foreground">
-                            {group.permissions.filter((p) => form.levels.includes(p.value)).length}/
-                            {group.permissions.length}
-                          </span>
-                        </div>
-                        {/* 權限項 */}
-                        {!isCollapsed && (
-                          <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {group.permissions.map((p) => (
-                              <label
-                                key={p.value}
-                                className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 px-2 py-1 rounded"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={form.levels.includes(p.value)}
-                                  onChange={() => togglePermission(p.value)}
-                                  className="w-3.5 h-3.5 rounded border-input"
-                                />
-                                <span className="text-sm">{p.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
               </div>
+
+              {/* 權限統計條 */}
+              {menuTree.length > 0 && (
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-secondary/20 rounded-md">
+                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{
+                        width: `${totalMenuNodes > 0 ? (selectedCount / totalMenuNodes) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {totalMenuNodes > 0 ? Math.round((selectedCount / totalMenuNodes) * 100) : 0}%
+                  </span>
+                </div>
+              )}
+
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
                   <span className="mr-1">⚠️</span>
@@ -556,6 +641,8 @@ export default function Roles() {
                 </p>
               )}
             </div>
+
+            {/* 對話框底部 */}
             <div className="flex justify-end gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">
               <button
                 onClick={() => setModalOpen(false)}

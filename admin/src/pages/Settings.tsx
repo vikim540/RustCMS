@@ -19,15 +19,16 @@ interface ConfigGroup {
   max: number
   title: string
   icon: string
+  desc: string
 }
 
 const CONFIG_GROUPS: ConfigGroup[] = [
-  { min: 20, max: 29, title: '留言表單', icon: '💬' },
-  { min: 30, max: 39, title: '安全配置', icon: '🛡️' },
-  { min: 40, max: 49, title: 'WebAPI', icon: '</>' },
-  { min: 50, max: 59, title: '通知配置', icon: '🔔' },
-  { min: 60, max: 69, title: '搜索引擎推送', icon: '🔍' },
-  { min: 90, max: 99, title: '郵件服務', icon: '📧' },
+  { min: 20, max: 29, title: '留言表單', icon: '💬', desc: '留言與表單提交相關配置' },
+  { min: 30, max: 39, title: '安全配置', icon: '🛡️', desc: 'API 安全、防護等設置' },
+  { min: 40, max: 49, title: 'WebAPI', icon: '</>', desc: 'API 接口與跨域配置' },
+  { min: 50, max: 59, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
+  { min: 60, max: 69, title: '搜索引擎推送', icon: '🔍', desc: '百度/神馬等搜索引擎收錄推送' },
+  { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
 ]
 
 /** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
@@ -61,14 +62,11 @@ export default function Settings() {
   const [configs, setConfigs] = useState<Config[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // 本地變更記錄: name -> newValue
   const [changes, setChanges] = useState<Record<string, string>>({})
-  const [saving, setSaving] = useState(false)
+  const [savingSection, setSavingSection] = useState<number | null>(null)
   const [successMsg, setSuccessMsg] = useState('')
-  // 通知測試按鈕 loading 狀態
   const [testMailLoading, setTestMailLoading] = useState(false)
   const [testWebhookLoading, setTestWebhookLoading] = useState(false)
-  // 功能開關（標準化 Hook）
   const { flags, isEnabled, toggle: toggleFlag, refresh: refreshFlags } = useFeatureFlags()
   const [flagUpdating, setFlagUpdating] = useState<string | null>(null)
 
@@ -79,7 +77,6 @@ export default function Settings() {
     try {
       const res = await api.get<Config[]>('/admin/configs')
       const data = Array.isArray(res.data) ? res.data : []
-      // 依 sorting 排序
       data.sort((a, b) => a.sorting - b.sorting)
       setConfigs(data)
       setChanges({})
@@ -94,7 +91,7 @@ export default function Settings() {
     fetchConfigs()
   }, [fetchConfigs])
 
-  /** 切換功能開關（標準化） */
+  /** 切換功能開關 */
   const handleToggleFlag = async (flagKey: string, currentEnabled: boolean) => {
     setFlagUpdating(flagKey)
     setError('')
@@ -110,9 +107,7 @@ export default function Settings() {
     }
   }
 
-  /** 郵件通知是否啟用 */
   const mailEnabled = isEnabled('notify_mail_enabled')
-  /** Webhook 通知是否啟用 */
   const webhookEnabled = isEnabled('notify_webhook_enabled')
 
   /** 取得某配置的當前顯示值（優先取本地變更） */
@@ -124,7 +119,6 @@ export default function Settings() {
   const updateValue = (name: string, value: string) => {
     setChanges((prev) => {
       const next = { ...prev }
-      // 若與原始值相同則移除變更記錄
       const original = configs.find((c) => c.name === name)?.value ?? ''
       if (value === original) {
         delete next[name]
@@ -142,31 +136,48 @@ export default function Settings() {
     updateValue(config.name, current === '1' ? '0' : '1')
   }
 
-  /** 提交保存（僅發送變更項） */
-  const handleSave = async () => {
-    const changedEntries = Object.entries(changes)
-    if (changedEntries.length === 0) return
+  /** 取得分組內已修改的配置數量 */
+  const getSectionChangedCount = (items: Config[]): number => {
+    return items.filter((c) => c.name in changes).length
+  }
 
-    setSaving(true)
-    setSuccessMsg('')
+  /** 分區塊保存（僅發送該分組的變更項） */
+  const handleSaveSection = async (group: ConfigGroup, items: Config[]) => {
+    const sectionNames = new Set(items.map((c) => c.name))
+    const sectionChanges = Object.entries(changes).filter(([name]) => sectionNames.has(name))
+    if (sectionChanges.length === 0) return
+
+    setSavingSection(group.min)
     setError('')
+    setSuccessMsg('')
     try {
       await api.put('/admin/configs', {
-        configs: changedEntries.map(([name, value]) => ({ name, value })),
+        configs: sectionChanges.map(([name, value]) => ({ name, value })),
       })
-      // 保存成功後重新拉取以同步本地狀態
-      await fetchConfigs()
-      setSuccessMsg('配置已成功保存')
-      // 3 秒後隱藏成功提示
+      // 更新本地 configs（無需重新拉取全部）
+      setConfigs((prev) =>
+        prev.map((c) =>
+          sectionNames.has(c.name) && c.name in changes
+            ? { ...c, value: changes[c.name] }
+            : c,
+        ),
+      )
+      // 清除該分組的變更記錄
+      setChanges((prev) => {
+        const next = { ...prev }
+        sectionNames.forEach((name) => delete next[name])
+        return next
+      })
+      setSuccessMsg(`「${group.title}」配置已保存`)
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失敗')
     } finally {
-      setSaving(false)
+      setSavingSection(null)
     }
   }
 
-  /** 測試郵件發送（彈出輸入框收集收件郵箱） */
+  /** 測試郵件發送 */
   const handleTestMail = async () => {
     const email = window.prompt('請輸入收件郵箱地址', '')
     if (!email) return
@@ -184,7 +195,7 @@ export default function Settings() {
     }
   }
 
-  /** 測試 Webhook 推送（以 message 分類觸發） */
+  /** 測試 Webhook 推送 */
   const handleTestWebhook = async () => {
     setTestWebhookLoading(true)
     setError('')
@@ -200,34 +211,19 @@ export default function Settings() {
     }
   }
 
-  /** 放棄所有變更 */
-  const handleReset = () => {
-    setChanges({})
-    setSuccessMsg('')
-  }
-
-  const changedCount = Object.keys(changes).length
-
-  /** 依分組切割配置（過濾掉手機版/水印/URL 等不需要的配置項，並根據功能開關隱藏對應區域） */
+  /** 依分組切割配置 */
   const groupedConfigs = useMemo(() => {
     const groups: { group: ConfigGroup; items: Config[] }[] = []
     const others: Config[] = []
 
     for (const config of configs) {
-      // 隱藏不需要的配置項
       if (HIDDEN_CONFIGS.has(config.name)) continue
-      // 隱藏 sorting 10-19 (手機版) 和 70-79 (水印) 範圍的所有配置
       if ((config.sorting >= 10 && config.sorting <= 19) || (config.sorting >= 70 && config.sorting <= 79)) continue
 
-      // 🏁 功能開關控制：郵件關閉時隱藏郵件相關配置
       if (!mailEnabled) {
-        // 隱藏整個郵件服務分組 (90-99)
         if (config.sorting >= 90 && config.sorting <= 99) continue
-        // 隱藏通知配置中的郵件相關項
         if (MAIL_IN_NOTIFY_CONFIGS.has(config.name)) continue
       }
-
-      // 🏁 功能開關控制：Webhook 關閉時隱藏 Webhook 相關配置
       if (!webhookEnabled) {
         if (WEBHOOK_CONFIGS.has(config.name)) continue
       }
@@ -245,7 +241,6 @@ export default function Settings() {
       }
     }
 
-    // 依分組定義順序排列，過濾掉所有項目都被隱藏的空分組
     const visibleGroups = groups
       .filter((g) => g.items.length > 0)
       .sort((a, b) => a.group.min - b.group.min)
@@ -267,7 +262,6 @@ export default function Settings() {
           hasChange && 'bg-amber-50/50 -mx-4 px-4',
         )}
       >
-        {/* 標籤 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">{config.description || config.name}</span>
@@ -279,11 +273,8 @@ export default function Settings() {
           </div>
           <span className="text-xs text-muted-foreground font-mono">{config.name}</span>
         </div>
-
-        {/* 控件 */}
         <div className="shrink-0">
           {isSwitch ? (
-            // 開關
             <button
               type="button"
               onClick={() => toggleSwitch(config)}
@@ -301,7 +292,6 @@ export default function Settings() {
               />
             </button>
           ) : (
-            // 文字輸入
             <input
               type="text"
               value={val}
@@ -315,8 +305,100 @@ export default function Settings() {
     )
   }
 
+  /** 渲染分組卡片（含獨立保存按鈕） */
+  const renderSectionCard = (group: ConfigGroup, items: Config[], isOther = false) => {
+    const changedCount = getSectionChangedCount(items)
+    const isSaving = savingSection === group.min
+    const displayGroup = isOther
+      ? { ...group, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' }
+      : group
+
+    return (
+      <div key={displayGroup.min} className="bg-white rounded-lg border overflow-hidden">
+        {/* 卡片頭部 */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b bg-gradient-to-r from-secondary/40 to-secondary/10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-lg shrink-0">{displayGroup.icon}</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">{displayGroup.title}</h2>
+                <span className="text-xs text-muted-foreground">({items.length} 項)</span>
+                {changedCount > 0 && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 text-amber-800">
+                    {changedCount} 項待保存
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground truncate">{displayGroup.desc}</p>
+            </div>
+          </div>
+          {/* 獨立保存按鈕 */}
+          <button
+            onClick={() => handleSaveSection(displayGroup, items)}
+            disabled={isSaving || changedCount === 0}
+            className={cn(
+              'flex items-center gap-1.5 px-3.5 py-1.5 text-sm rounded-md transition-all shrink-0',
+              changedCount > 0
+                ? 'bg-primary text-primary-foreground hover:opacity-90'
+                : 'bg-muted text-muted-foreground cursor-not-allowed',
+            )}
+          >
+            {isSaving ? (
+              <span className="animate-spin inline-block text-sm">🔄</span>
+            ) : (
+              <span className="text-sm">💾</span>
+            )}
+            {isSaving ? '保存中...' : changedCount > 0 ? `保存 (${changedCount})` : '保存'}
+          </button>
+        </div>
+        {/* 配置項 */}
+        <div className="px-4">
+          {items.map(renderConfigRow)}
+        </div>
+        {/* 通知配置分組：測試按鈕 */}
+        {displayGroup.min === 50 && (mailEnabled || webhookEnabled) && (
+          <div className="px-4 py-3 border-t flex flex-wrap items-center gap-2 bg-secondary/10">
+            <span className="text-xs text-muted-foreground mr-1">通知測試：</span>
+            {mailEnabled && (
+              <button
+                type="button"
+                onClick={handleTestMail}
+                disabled={testMailLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {testMailLoading ? (
+                  <span className="animate-spin inline-block text-sm">🔄</span>
+                ) : (
+                  <span className="text-sm">📤</span>
+                )}
+                測試郵件
+              </button>
+            )}
+            {webhookEnabled && (
+              <button
+                type="button"
+                onClick={handleTestWebhook}
+                disabled={testWebhookLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {testWebhookLoading ? (
+                  <span className="animate-spin inline-block text-sm">🔄</span>
+                ) : (
+                  <span className="text-sm">🪝</span>
+                )}
+                測試 Webhook
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const totalChanged = Object.keys(changes).length
+
   return (
-    <div className="p-6 pb-24">
+    <div className="p-6 pb-8">
       {/* 頁頭 */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -324,8 +406,27 @@ export default function Settings() {
             <span className="text-xl">⚙️</span>
             系統設置
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">管理網站各項系統配置參數</p>
+          <p className="text-sm text-muted-foreground mt-1">管理網站各項系統配置參數，每個區塊可獨立保存</p>
         </div>
+        {totalChanged > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-sm text-amber-700 bg-amber-100 px-3 py-1.5 rounded-md">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-300 text-amber-900 text-xs font-bold">
+                {totalChanged}
+              </span>
+              項待保存
+            </span>
+            <button
+              onClick={() => {
+                setChanges({})
+                setSuccessMsg('')
+              }}
+              className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              全部放棄
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 錯誤提示 */}
@@ -344,9 +445,9 @@ export default function Settings() {
         </div>
       )}
 
-      {/* 🚩 功能開關區域（註冊表驅動，標準化組件） */}
+      {/* 功能開關區域 */}
       {!loading && flags.length > 0 && (
-        <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 overflow-hidden">
+        <div className="mb-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-indigo-100 bg-white/50">
             <span>🚩</span>
             <h2 className="font-semibold text-indigo-900">功能開關</h2>
@@ -380,7 +481,6 @@ export default function Settings() {
                   </div>
                   <div className="shrink-0">
                     {isFlagshipManaged ? (
-                      // Flagship 管理: 唯讀開關 + 提示
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">由 Flagship 管理</span>
                         <div
@@ -398,7 +498,6 @@ export default function Settings() {
                         </div>
                       </div>
                     ) : (
-                      // D1 管理: 可切換開關
                       <button
                         type="button"
                         onClick={() => handleToggleFlag(flag.key, flag.enabled)}
@@ -452,116 +551,18 @@ export default function Settings() {
         </div>
       )}
 
-      {/* 配置分組卡片 */}
+      {/* 配置分組卡片（每個區塊獨立保存） */}
       {!loading && configs.length > 0 && (
-        <div className="space-y-6">
-          {groupedConfigs.groups.map(({ group, items }) => (
-            <div key={group.min} className="bg-white rounded-lg border overflow-hidden">
-              {/* 分組標題 */}
-              <div className="flex items-center gap-2.5 px-5 py-3.5 border-b bg-secondary/30">
-                <span className="text-muted-foreground">{group.icon}</span>
-                <h2 className="font-semibold">{group.title}</h2>
-                <span className="text-xs text-muted-foreground">（{items.length} 項）</span>
-              </div>
-              {/* 配置項 */}
-              <div className="px-4">
-                {items.map(renderConfigRow)}
-              </div>
-              {/* 通知配置分組：測試按鈕（根據功能開關顯示） */}
-              {group.min === 50 && (mailEnabled || webhookEnabled) && (
-                <div className="px-4 py-3 border-t flex flex-wrap items-center gap-2 bg-secondary/10">
-                  <span className="text-xs text-muted-foreground mr-1">通知測試：</span>
-                  {mailEnabled && (
-                    <button
-                      type="button"
-                      onClick={handleTestMail}
-                      disabled={testMailLoading}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {testMailLoading ? (
-                        <span className="animate-spin inline-block text-sm">🔄</span>
-                      ) : (
-                        <span className="text-sm">📤</span>
-                      )}
-                      測試郵件
-                    </button>
-                  )}
-                  {webhookEnabled && (
-                    <button
-                      type="button"
-                      onClick={handleTestWebhook}
-                      disabled={testWebhookLoading}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {testWebhookLoading ? (
-                        <span className="animate-spin inline-block text-sm">🔄</span>
-                      ) : (
-                        <span className="text-sm">🪝</span>
-                      )}
-                      測試 Webhook
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* 未分組配置 */}
-          {groupedConfigs.others.length > 0 && (
-            <div className="bg-white rounded-lg border overflow-hidden">
-              <div className="flex items-center gap-2.5 px-5 py-3.5 border-b bg-secondary/30">
-                <span className="text-muted-foreground">⚙️</span>
-                <h2 className="font-semibold">其他配置</h2>
-                <span className="text-xs text-muted-foreground">
-                  （{groupedConfigs.others.length} 項）
-                </span>
-              </div>
-              <div className="px-4">
-                {groupedConfigs.others.map(renderConfigRow)}
-              </div>
-            </div>
+        <div className="space-y-5">
+          {groupedConfigs.groups.map(({ group, items }) =>
+            renderSectionCard(group, items),
           )}
-        </div>
-      )}
-
-      {/* 底部固定操作列 */}
-      {!loading && configs.length > 0 && (
-        <div className="fixed bottom-0 left-56 right-0 bg-white border-t px-6 py-3 flex items-center justify-between z-30">
-          <div className="text-sm text-muted-foreground">
-            {changedCount > 0 ? (
-              <span className="flex items-center gap-1.5">
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-200 text-amber-800 text-xs font-bold">
-                  {changedCount}
-                </span>
-                項配置已修改，待保存
-              </span>
-            ) : (
-              <span>無未保存的變更</span>
+          {groupedConfigs.others.length > 0 &&
+            renderSectionCard(
+              { min: -1, max: -1, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' },
+              groupedConfigs.others,
+              true,
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            {changedCount > 0 && (
-              <button
-                onClick={handleReset}
-                disabled={saving}
-                className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
-              >
-                放棄變更
-              </button>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={saving || changedCount === 0}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              {saving ? (
-                <span className="animate-spin inline-block">🔄</span>
-              ) : (
-                <span>💾</span>
-              )}
-              {saving ? '保存中...' : `保存配置${changedCount > 0 ? ` (${changedCount})` : ''}`}
-            </button>
-          </div>
         </div>
       )}
     </div>

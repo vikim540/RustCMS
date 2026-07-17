@@ -15,11 +15,32 @@ interface User {
   status: string
 }
 
-/** 角色數據（用於多選） */
+/** 角色數據（含權限數量） */
 interface Role {
   id: number
   name: string
   rcode: string
+  description: string
+  status: string
+}
+
+/** 角色詳情（含權限 levels） */
+interface RoleDetail {
+  role: Role
+  levels: string[]
+}
+
+/** 菜單節點 */
+interface MenuNode {
+  id: number
+  mcode: string
+  pcode: string
+  name: string
+  url: string
+  ico: string
+  sorting: number
+  status: string
+  children?: MenuNode[]
 }
 
 /** 用戶表單 */
@@ -43,9 +64,34 @@ const EMPTY_FORM: UserForm = {
 /** 超級管理員 ucode（不可刪除） */
 const SUPER_ADMIN_UCODE = '10001'
 
+/** 遞迴查找 mcode 對應的菜單名稱 */
+function findMenuName(nodes: MenuNode[], mcode: string): string {
+  for (const node of nodes) {
+    if (node.mcode === mcode) return node.name
+    if (node.children?.length) {
+      const found = findMenuName(node.children, mcode)
+      if (found) return found
+    }
+  }
+  return ''
+}
+
+/** 遞迴收集樹中所有 mcode */
+function collectAllMcodes(nodes: MenuNode[]): string[] {
+  const result: string[] = []
+  for (const node of nodes) {
+    result.push(node.mcode)
+    if (node.children?.length) {
+      result.push(...collectAllMcodes(node.children))
+    }
+  }
+  return result
+}
+
 export default function Users() {
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
+  const [menuTree, setMenuTree] = useState<MenuNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
@@ -56,6 +102,11 @@ export default function Users() {
   const [form, setForm] = useState<UserForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
+
+  // 權限預覽狀態
+  const [roleLevelsCache, setRoleLevelsCache] = useState<Record<string, string[]>>({})
+  const [showPermissionPreview, setShowPermissionPreview] = useState(false)
+  const [permissionLoading, setPermissionLoading] = useState(false)
 
   /** 載入用戶列表 */
   const fetchUsers = useCallback(async () => {
@@ -71,7 +122,7 @@ export default function Users() {
     }
   }, [])
 
-  /** 載入角色列表（用於多選） */
+  /** 載入角色列表 */
   const fetchRoles = useCallback(async () => {
     try {
       const res = await api.get<Role[]>('/admin/roles')
@@ -81,18 +132,70 @@ export default function Users() {
     }
   }, [])
 
+  /** 載入菜單樹（用於權限預覽顯示菜單名稱） */
+  const fetchMenuTree = useCallback(async () => {
+    try {
+      const res = await api.get<MenuNode[]>('/admin/menus')
+      setMenuTree(Array.isArray(res.data) ? res.data : [])
+    } catch {
+      /* 靜默處理 */
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
     fetchRoles()
-  }, [fetchUsers, fetchRoles])
+    fetchMenuTree()
+  }, [fetchUsers, fetchRoles, fetchMenuTree])
 
-  /** 取得角色名稱（根據 rcodes 字串） */
+  /** 取得角色名稱 */
   const getRoleNames = (rcodes: string): string => {
     if (!rcodes) return '-'
     const codeList = rcodes.split(',').map((s) => s.trim()).filter(Boolean)
-    const names = codeList
-      .map((code) => roles.find((r) => r.rcode === code)?.name ?? code)
+    const names = codeList.map((code) => roles.find((r) => r.rcode === code)?.name ?? code)
     return names.join(', ') || '-'
+  }
+
+  /** 取得用戶的角色列表（對象數組） */
+  const getUserRoles = (rcodes: string): Role[] => {
+    if (!rcodes) return []
+    const codeList = rcodes.split(',').map((s) => s.trim()).filter(Boolean)
+    return codeList
+      .map((code) => roles.find((r) => r.rcode === code))
+      .filter((r): r is Role => !!r)
+  }
+
+  /** 載入所選角色的權限詳情（用於預覽） */
+  const loadRolePermissions = async (rcodeList: string[]) => {
+    setPermissionLoading(true)
+    const newCache = { ...roleLevelsCache }
+    for (const rcode of rcodeList) {
+      if (newCache[rcode]) continue
+      const role = roles.find((r) => r.rcode === rcode)
+      if (!role) continue
+      try {
+        const res = await api.get<RoleDetail>(`/admin/roles/${role.id}`)
+        if (res.data?.levels) {
+          newCache[rcode] = res.data.levels
+        }
+      } catch {
+        /* 忽略 */
+      }
+    }
+    setRoleLevelsCache(newCache)
+    setPermissionLoading(false)
+  }
+
+  /** 計算用戶的有效權限（合併所有角色的 levels） */
+  const getEffectivePermissions = (rcodeList: string[]): Set<string> => {
+    const perms = new Set<string>()
+    for (const rcode of rcodeList) {
+      const levels = roleLevelsCache[rcode]
+      if (levels) {
+        levels.forEach((l) => perms.add(l))
+      }
+    }
+    return perms
   }
 
   /** 開啟新增對話框 */
@@ -100,6 +203,7 @@ export default function Users() {
     setEditTarget(null)
     setForm(EMPTY_FORM)
     setActionError('')
+    setShowPermissionPreview(false)
     setModalOpen(true)
   }
 
@@ -108,13 +212,19 @@ export default function Users() {
     setEditTarget(item)
     setForm({
       username: item.username ?? '',
-      password: '', // 編輯時密碼留空表示不修改
+      password: '',
       realname: item.realname ?? '',
       rcodes: item.rcodes ? item.rcodes.split(',').map((s) => s.trim()).filter(Boolean) : [],
       status: item.status ?? '1',
     })
     setActionError('')
+    setShowPermissionPreview(false)
     setModalOpen(true)
+    // 預載入權限
+    const codeList = item.rcodes ? item.rcodes.split(',').map((s) => s.trim()).filter(Boolean) : []
+    if (codeList.length > 0) {
+      loadRolePermissions(codeList)
+    }
   }
 
   /** 切換角色選擇 */
@@ -125,6 +235,10 @@ export default function Users() {
         ? f.rcodes.filter((r) => r !== rcode)
         : [...f.rcodes, rcode],
     }))
+    // 選中角色時預載入其權限
+    if (!form.rcodes.includes(rcode)) {
+      loadRolePermissions([rcode])
+    }
   }
 
   /** 提交表單 */
@@ -142,7 +256,6 @@ export default function Users() {
     setActionError('')
     try {
       if (editTarget) {
-        // 編輯：密碼可選
         const payload: Record<string, unknown> = {
           realname: form.realname,
           rcodes: form.rcodes.join(','),
@@ -153,7 +266,6 @@ export default function Users() {
         }
         await api.put(`/admin/users/${editTarget.id}`, payload)
       } else {
-        // 新增
         const payload = {
           username: form.username.trim(),
           password: form.password,
@@ -187,13 +299,19 @@ export default function Users() {
     }
   }
 
+  // 計算當前表單選中角色的有效權限
+  const effectivePerms = getEffectivePermissions(form.rcodes)
+  const totalMenuCount = collectAllMcodes(menuTree).length
+
   return (
     <div className="p-6">
       {/* 頁首 */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">系統用戶</h1>
-          <p className="text-sm text-muted-foreground mt-1">管理後台系統用戶帳號</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            管理後台用戶帳號，為用戶分配角色以控制其可訪問的菜單功能
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -202,6 +320,18 @@ export default function Users() {
           <span className="mr-1">➕</span>
           新增用戶
         </button>
+      </div>
+
+      {/* 三者關係說明卡片 */}
+      <div className="mb-5 bg-green-50 border border-green-200 rounded-lg px-5 py-3.5 flex items-start gap-3">
+        <span className="text-lg shrink-0">💡</span>
+        <div className="text-sm text-green-800">
+          <p className="font-medium mb-1">用戶如何獲得菜單訪問權限</p>
+          <p className="text-green-600 text-xs leading-relaxed">
+            為用戶分配角色 → 角色包含菜單權限（在角色管理中配置）→ 用戶即可訪問對應菜單。
+            一個用戶可分配多個角色，權限取併集。
+          </p>
+        </div>
       </div>
 
       {/* 錯誤提示 */}
@@ -256,6 +386,7 @@ export default function Users() {
               <tbody>
                 {users.map((item) => {
                   const isSuperAdmin = item.ucode === SUPER_ADMIN_UCODE
+                  const userRoles = getUserRoles(item.rcodes)
                   return (
                     <tr
                       key={item.id}
@@ -274,7 +405,28 @@ export default function Users() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{item.realname || '-'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{getRoleNames(item.rcodes)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {userRoles.length === 0 ? (
+                            <span className="text-muted-foreground text-xs">-</span>
+                          ) : (
+                            userRoles.map((role) => (
+                              <span
+                                key={role.rcode}
+                                className={cn(
+                                  'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+                                  role.status === '1'
+                                    ? 'bg-blue-50 text-blue-700'
+                                    : 'bg-gray-100 text-gray-500',
+                                )}
+                                title={role.description || role.rcode}
+                              >
+                                {role.name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">{item.login_count ?? 0}</td>
                       <td className="px-4 py-3 text-muted-foreground">{item.last_login_ip || '-'}</td>
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
@@ -297,7 +449,7 @@ export default function Users() {
                           <button
                             onClick={() => openEdit(item)}
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                            title="編輯"
+                            title="編輯用戶及角色分配"
                           >
                             <span className="text-sm">✏️</span>
                             編輯
@@ -330,9 +482,15 @@ export default function Users() {
       {/* 新增/編輯對話框 */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
-              <h2 className="text-lg font-semibold">{editTarget ? '編輯用戶' : '新增用戶'}</h2>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+            {/* 對話框頭部 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white z-10">
+              <div>
+                <h2 className="text-lg font-semibold">{editTarget ? '編輯用戶' : '新增用戶'}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {editTarget ? '修改用戶信息並分配角色' : '創建新用戶並分配角色'}
+                </p>
+              </div>
               <button
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
@@ -340,92 +498,204 @@ export default function Users() {
                 ❌
               </button>
             </div>
+
             <div className="px-5 py-4 space-y-4">
-              {/* 用戶名 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">
-                  用戶名 {!editTarget && <span className="text-destructive">*</span>}
-                </label>
-                <input
-                  type="text"
-                  value={form.username}
-                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="請輸入用戶名"
-                  disabled={!!editTarget}
-                  autoFocus
-                />
-                {editTarget && (
-                  <p className="text-xs text-muted-foreground mt-1">用戶名創建後不可修改</p>
-                )}
-              </div>
-              {/* 密碼 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">
-                  密碼 {!editTarget && <span className="text-destructive">*</span>}
-                </label>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder={editTarget ? '留空表示不修改密碼' : '請輸入密碼'}
-                />
-                {editTarget && (
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <span className="text-xs">🔒</span>
-                    留空則保持原密碼不變
-                  </p>
-                )}
-              </div>
-              {/* 真實姓名 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">真實姓名</label>
-                <input
-                  type="text"
-                  value={form.realname}
-                  onChange={(e) => setForm((f) => ({ ...f, realname: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="請輸入真實姓名"
-                />
-              </div>
-              {/* 角色（多選） */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">角色</label>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto border rounded-md p-3">
-                  {roles.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">暫無可選角色</p>
-                  ) : (
-                    roles.map((role) => (
-                      <label
-                        key={role.id}
-                        className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 px-2 py-1 rounded"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={form.rcodes.includes(role.rcode)}
-                          onChange={() => toggleRole(role.rcode)}
-                          className="w-4 h-4 rounded border-input"
-                        />
-                        <span className="text-sm">{role.name}</span>
-                        <span className="text-xs text-muted-foreground font-mono">({role.rcode})</span>
-                      </label>
-                    ))
+              {/* 基本信息區 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">
+                    用戶名 {!editTarget && <span className="text-destructive">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={form.username}
+                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="請輸入用戶名"
+                    disabled={!!editTarget}
+                    autoFocus
+                  />
+                  {editTarget && (
+                    <p className="text-xs text-muted-foreground mt-1">用戶名創建後不可修改</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">
+                    密碼 {!editTarget && <span className="text-destructive">*</span>}
+                  </label>
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder={editTarget ? '留空表示不修改密碼' : '請輸入密碼'}
+                  />
+                  {editTarget && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                      <span>🔒</span>
+                      填寫新密碼以重設
+                    </p>
                   )}
                 </div>
               </div>
-              {/* 狀態 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">狀態</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
-                >
-                  <option value="1">啟用</option>
-                  <option value="0">禁用</option>
-                </select>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">真實姓名</label>
+                  <input
+                    type="text"
+                    value={form.realname}
+                    onChange={(e) => setForm((f) => ({ ...f, realname: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="請輸入真實姓名"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">狀態</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                  >
+                    <option value="1">啟用</option>
+                    <option value="0">禁用</option>
+                  </select>
+                </div>
               </div>
+
+              {/* 角色分配區 */}
+              <div className="border rounded-md overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b bg-secondary/30">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🎭</span>
+                    <span className="text-sm font-medium">角色分配</span>
+                    <span className="text-xs text-muted-foreground">
+                      已選 {form.rcodes.length} 個角色
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPermissionPreview(!showPermissionPreview)
+                      if (!showPermissionPreview && form.rcodes.length > 0) {
+                        loadRolePermissions(form.rcodes)
+                      }
+                    }}
+                    className="text-xs px-2.5 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors flex items-center gap-1"
+                  >
+                    <span>{showPermissionPreview ? '👁️‍🗨️' : '👁️'}</span>
+                    {showPermissionPreview ? '收起權限預覽' : '查看權限預覽'}
+                  </button>
+                </div>
+
+                {/* 角色選擇列表 */}
+                <div className="p-3 space-y-2">
+                  {roles.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground text-sm">
+                      <span className="text-2xl block mb-2 opacity-50">🎭</span>
+                      尚未創建任何角色
+                      <p className="text-xs mt-1">請先到「角色管理」創建角色</p>
+                    </div>
+                  ) : (
+                    roles.map((role) => {
+                      const isSelected = form.rcodes.includes(role.rcode)
+                      const rolePerms = roleLevelsCache[role.rcode]
+                      return (
+                        <div
+                          key={role.id}
+                          className={cn(
+                            'flex items-center gap-3 p-2.5 rounded-md border transition-all cursor-pointer',
+                            isSelected
+                              ? 'border-primary bg-primary/5'
+                              : 'border-gray-200 hover:border-gray-300 hover:bg-accent/30',
+                          )}
+                          onClick={() => toggleRole(role.rcode)}
+                        >
+                          {/* 複選框 */}
+                          <div
+                            className={cn(
+                              'flex items-center justify-center w-5 h-5 rounded border-2 transition-all shrink-0',
+                              isSelected
+                                ? 'bg-primary border-primary text-white'
+                                : 'bg-white border-gray-300',
+                            )}
+                          >
+                            {isSelected && <span className="text-xs">✓</span>}
+                          </div>
+
+                          {/* 角色信息 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{role.name}</span>
+                              <span className="text-xs text-muted-foreground font-mono">{role.rcode}</span>
+                              {role.status === '0' && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">
+                                  已禁用
+                                </span>
+                              )}
+                            </div>
+                            {role.description && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                {role.description}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* 權限數量 */}
+                          <div className="shrink-0 text-right">
+                            {rolePerms ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                <span>📋</span>
+                                {rolePerms.length} 個菜單
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* 權限預覽 */}
+                {showPermissionPreview && (
+                  <div className="border-t bg-secondary/10 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">📊</span>
+                      <span className="text-sm font-medium">有效權限預覽</span>
+                      <span className="text-xs text-muted-foreground">
+                        （{form.rcodes.length} 個角色合併，共 {effectivePerms.size} / {totalMenuCount} 個菜單）
+                      </span>
+                      {permissionLoading && (
+                        <span className="animate-spin inline-block text-sm text-muted-foreground">🔄</span>
+                      )}
+                    </div>
+                    {form.rcodes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2">請先選擇至少一個角色</p>
+                    ) : permissionLoading ? (
+                      <p className="text-xs text-muted-foreground py-2">載入權限中...</p>
+                    ) : effectivePerms.size === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2">所選角色未配置任何菜單權限</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                        {Array.from(effectivePerms).map((mcode) => {
+                          const menuName = findMenuName(menuTree, mcode)
+                          return (
+                            <span
+                              key={mcode}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-white border rounded text-foreground"
+                            >
+                              {menuName || mcode}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
                   <span className="mr-1">⚠️</span>
@@ -433,6 +703,8 @@ export default function Users() {
                 </p>
               )}
             </div>
+
+            {/* 對話框底部 */}
             <div className="flex justify-end gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">
               <button
                 onClick={() => setModalOpen(false)}

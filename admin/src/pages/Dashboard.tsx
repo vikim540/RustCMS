@@ -43,10 +43,16 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v0.6.0',
+    date: '2026-07-17',
+    icon: '🎨',
+    latest: true,
+    changes: '系統設置分區塊獨立保存（無需整頁刷新）；角色權限改為菜單樹驅動（與菜單管理聯動）；用戶管理增加權限預覽（所選角色合併權限）；菜單管理顯示 mcode 權限鍵並修正 scode→mcode 字段；三頁面增加三者關係說明卡片',
+  },
+  {
     version: 'v0.5.0',
     date: '2026-07-17',
     icon: '🏗️',
-    latest: true,
     changes: '功能開關標準化架構：FLAG_REGISTRY 註冊表驅動；autoRouteProtection API 攔截中間件；FeatureFlagProvider + FeatureGate 組件化前端控制；後端關閉功能時 API 返回 404',
   },
   {
