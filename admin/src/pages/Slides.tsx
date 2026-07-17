@@ -418,7 +418,8 @@ export default function Slides() {
                 <tr className="border-b bg-secondary/50">
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">分組</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">圖片</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">桌面版圖片</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">移動端圖片</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">標題</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">副標題</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">連結</th>
@@ -447,6 +448,17 @@ export default function Slides() {
                         />
                       ) : (
                         <span className="text-muted-foreground text-xs">無圖片</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.pic_mobile ? (
+                        <img
+                          src={item.pic_mobile}
+                          alt={item.title || '移動端幻燈片'}
+                          className="w-14 h-24 rounded object-cover border"
+                        />
+                      ) : (
+                        <span className="text-muted-foreground text-xs">無</span>
                       )}
                     </td>
                     <td className="px-4 py-3 font-medium">{item.title || '-'}</td>

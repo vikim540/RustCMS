@@ -43,10 +43,16 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.0.0',
+    date: '2026-07-17 15:59:10',
+    icon: '🎉',
+    latest: true,
+    changes: '登錄頁無限刷新根因修復（FeatureFlagProvider 移至 Layout 僅認證頁加載 + 全局重定向鎖防並發 401 + data-cfasync=false 繞過 Rocket Loader）；功能開關改為始終 D1 模式（後台直接管理無需 Flagship 面板）；移除 isFlagshipManaged 只讀判斷，開關始終可互動；S3 存儲配置獨立分塊 + 默認鎖定防誤觸（解鎖按鈕）+ 默認折疊；搜索引擎推送默認折疊；幻燈片增加移動端圖片預覽列；AGENTS.md 移除數據庫零改動約束 + 更新 Flagship 為始終 D1 + 精簡重複內容',
+  },
+  {
     version: 'v0.9.0',
     date: '2026-07-17 15:11:27',
     icon: '🔧',
-    latest: true,
     changes: '登錄頁無限刷新修復（FeatureFlagProvider 401 守衛 + 無 Token 跳過 + 401 不重定向至 /login）；系統用戶改為單選角色（radio UI）；角色管理增加權限數/用戶數列 + 系統角色徽章；側邊欄按 mcode 權限過濾 + 用戶信息顯示；後端內容排序改為 PbootCMS 邏輯（istop DESC, isrecommend DESC, isheadline DESC, sorting ASC, date DESC, id DESC）；內容排序支持內聯修改；幻燈片增加分組標籤 + 自定義分組名（localStorage）',
   },
   {

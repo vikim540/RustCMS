@@ -116,18 +116,14 @@ export function resetFlagCache(): void {
 
 /**
  * 獲取單個開關狀態（統一入口）
- * - Flagship 已配置：讀 Flagship
- * - Flagship 未配置：D1 回退（值為 '0' = 關閉，其他 = 開啟）
+ * 始終使用 D1 存儲，支持後台直接切換（無需 Cloudflare Dashboard）
+ * 值為 '0' = 關閉，其他 = 開啟
  */
 export async function getFlagEnabled(env: FlagReadEnv, key: string): Promise<boolean> {
   const def = findFlagDef(key);
   if (!def) return true; // 未註冊的開關默認開啟
 
-  if (env['Flagship-service']) {
-    return env['Flagship-service'].getBooleanValue(key, def.defaultValue, {});
-  }
-
-  // D1 回退
+  // 始終從 D1 讀取（支持後台直接管理）
   const d1Flags = await loadFlagsFromD1(env.DB);
   const val = d1Flags[key];
   if (val === undefined) return def.defaultValue;
@@ -140,7 +136,7 @@ export async function getFlagEnabled(env: FlagReadEnv, key: string): Promise<boo
 export async function getAllFlags(env: FlagReadEnv): Promise<
   Array<{ key: string; label: string; description: string; icon: string; enabled: boolean; managedBy: 'flagship' | 'database' }>
 > {
-  const managedBy: 'flagship' | 'database' = env['Flagship-service'] ? 'flagship' : 'database';
+  const managedBy: 'flagship' | 'database' = 'database';
   const results = await Promise.all(
     FLAG_REGISTRY.map(async (def) => ({
       key: def.key,
@@ -200,7 +196,7 @@ export function autoRouteProtection(): MiddlewareHandler {
 // ============================================================================
 
 /**
- * 切換開關（僅 D1 回退模式可用）
+ * 切換開關（後台直接管理，寫入 D1）
  * @returns { success, error? }
  */
 export async function setFlagEnabled(
@@ -210,10 +206,6 @@ export async function setFlagEnabled(
 ): Promise<{ success: boolean; error?: string }> {
   const def = findFlagDef(key);
   if (!def) return { success: false, error: '無效的功能開關 key' };
-
-  if (env['Flagship-service']) {
-    return { success: false, error: 'Flagship 已配置，請在 Cloudflare Dashboard 管理' };
-  }
 
   // 先 UPDATE，無行則 INSERT（name 無 UNIQUE 約束）
   const updateResult = await env.DB.prepare('UPDATE ay_config SET value = ? WHERE name = ?')

@@ -8,7 +8,7 @@
 
 TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結構，前後端完全分離的純 API 後端，部署在 Cloudflare Workers 上。
 
-> **技術棧說明**：項目最初規劃 Rust（workers-rs），實際運行 TypeScript + Hono。workers-rs v0.8.5 活躍維護中，支持 D1/KV/R2/Queues/RateLimit/Email/ServiceBindings，但**缺 Vectorize 和 Flagship 原生綁定**。未來 CPU 密集型模塊可拆分為獨立 Rust Worker，通過 Service Bindings 供 TS 主 Worker 調用。
+> **技術棧說明**：項目最初規劃 Rust（workers-rs），實際運行 TypeScript + Hono。workers-rs v0.8.5 活躍維護中，支持 D1/KV/R2/Queues/RateLimit/Email/ServiceBindings，但**缺 Vectorize 原生綁定**。未來 CPU 密集型模塊可拆分為獨立 Rust Worker，通過 Service Bindings 供 TS 主 Worker 調用。
 
 ### 參考項目
 
@@ -29,7 +29,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | Vectorize | `article-semantic-search`（768維 cosine，中文語義搜索） |
 | Workers AI | 嵌入模型 `@cf/baai/bge-base-zh-v1.5` |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min)、`ADMIN_API_LIMIT`(300/min)、`LOGIN_LIMIT`(5/min)、`FORM_LIMIT`(1/10s) |
-| Flagship | app `Rustcms-service`，綁定變量 `Flagship-service`（app_id: `64eac514-0d8a-4cc2-8b1a-eeded13a532d`），flags: `mail_enabled`、`webhook_enabled`（未配置時 D1 回退） |
+| 功能開關 | D1 存儲 + `FLAG_REGISTRY` 註冊表驅動，後台直接管理（flags: `mail_enabled`、`webhook_enabled`） |
 | Email | MailChannels / Resend HTTP API（免費第三方，CF Email Service 需 Workers Paid） |
 | Pages | `cms-admin`（管理後台 SPA），域名 `rbootcms.cmer.eu.org` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms`（零延遲內部通信） |
@@ -42,11 +42,12 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 ## 硬約束
 
-### 1. 數據庫零改動
+### 1. 數據庫管理
 
-- **禁止**修改/刪除/重命名 PbootCMS 原版任何表結構或字段，表前綴 `ay_` 不變
-- **允許**冪等操作：`CREATE INDEX IF NOT EXISTS`、`INSERT ... WHERE NOT EXISTS`
-- **允許**新增表（僅限 Go 版已驗證：`ay_area`, `ay_role_area`, `ay_301_redirect`, `ay_media_mark`, `ay_content_ext`）
+- 表前綴 `ay_` 保持不變，可按需修改/新增表結構和字段
+- SQL 始終使用 `.bind()` 參數化，禁止字符串拼接
+- 新增表/字段使用冪等語法：`CREATE TABLE IF NOT EXISTS`、`ALTER TABLE ... ADD COLUMN ... IF NOT EXISTS`
+- 參考 PbootCMS/Go 版已驗證的新增表：`ay_area`, `ay_role_area`, `ay_301_redirect`, `ay_media_mark`, `ay_content_ext`
 
 ### 2. 技術棧
 
@@ -57,7 +58,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 - 佇列：**Queues**（定時文章發布，`delaySeconds` 上限 24 小時，配合 Cron 每 15 分鐘掃描）
 - 語義搜索：**Vectorize + Workers AI**（`@cf/baai/bge-base-zh-v1.5` 中文嵌入模型，768 維）
 - 速率限制：**Rate Limiting bindings**（零網絡開銷，本地計數器）
-- 功能開關：**Flagship**（動態切換郵件/Webhook 通知，未配置時 D1 回退，可在設置頁切換）
+- 功能開關：**D1 存儲** + `FLAG_REGISTRY` 註冊表驅動，後台直接切換（`src/services/flags.ts`），關閉時自動隱藏相關配置 + 攔截 API
 - 郵件：**MailChannels / Resend** HTTP API（免費第三方，CF Email Service 需 Workers Paid）
 - 前端：**React 18 + Vite + Tailwind CSS**（Cloudflare Pages）
 - 內部通信：**Service Bindings**（Pages ↔ Worker 零延遲，不走公網）
@@ -115,7 +116,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 - 語義搜索：`/api/v1/search?q=關鍵詞&topK=10&threshold=0.7`
 - 定時發布：`/api/v1/admin/scheduler/list`、`/api/v1/admin/scheduler/schedule`
 - Vectorize 索引：`/api/v1/admin/vectorize/reindex`
-- Flagship 開關查詢/切換：`/api/v1/admin/flags`（GET 查詢，PUT 切換 — 僅 D1 回退模式）
+- 功能開關查詢/切換：`/api/v1/admin/flags`（GET 查詢，PUT 切換）
 - 通知測試：`/api/v1/admin/notify/test-mail`、`/api/v1/admin/notify/test-webhook`
 
 ---
@@ -137,15 +138,15 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 中間件從 KV 讀取 `api_cors_origins`，配置白名單則僅允許列出的 Origin（含 `Vary: Origin` + `Credentials`），未配置則允許 `*`。
 
-### 通知服務（Webhook + 郵件 + Flagship 開關）
+### 通知服務（Webhook + 郵件 + 功能開關）
 
-- **Flagship 開關（標準化架構）**：`mail_enabled` / `webhook_enabled` 控制通知總開關
+- **功能開關（標準化架構）**：`mail_enabled` / `webhook_enabled` 控制通知總開關
   - **註冊表驅動**：所有功能開關在 `src/services/flags.ts` 的 `FLAG_REGISTRY` 中註冊（key/label/description/icon/defaultValue/protectedRoutes）
-  - **混合模式**：Flagship 已配置（`wrangler.jsonc` 中 `Flagship-service` 綁定，app `Rustcms-service`）讀 Flagship，否則 D1 回退
+  - **D1 存儲**：開關值存儲在 `ay_config` 表，後台直接切換，無需外部面板
   - **後端攔截**：`autoRouteProtection()` 中間件自動攔截 `protectedRoutes` 定義的 API 端點，關閉時返回 `code:1004`
   - **前端組件化**：`FeatureFlagProvider` + `useFeatureFlags` Hook + `<FeatureGate flagKey="...">` 組件，關閉時不渲染子組件
   - 關閉後：通知邏輯不執行 + API 端點被攔截 + 後台隱藏對應配置區域
-  - API：`GET /api/v1/admin/flags` 查詢開關狀態，`PUT /api/v1/admin/flags` 切換開關（僅 D1 回退模式）
+  - API：`GET /api/v1/admin/flags` 查詢開關狀態，`PUT /api/v1/admin/flags` 切換開關
   - **新增大功能時**：在 `FLAG_REGISTRY` 加一條即可，前端/後端/API 攔截全部自動生效
 - **Webhook**（`src/services/notify.ts`）：自動檢測平台（釘釘 ActionCard / 企業微信 Markdown / 通用 JSON），分項開關 `webhook_message|form|comment`
 - **郵件**（`src/services/notify.ts`）：MailChannels / Resend HTTP API（免費第三方）；配置 `mail_from|mail_from_name|mail_provider|mail_api_key`；HTML 模板含漸層 header / 字段表格 / 來源信息 / footer
@@ -199,7 +200,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | 語義搜索 | 無 | 無 | `src/services/vectorize.ts` Vectorize + Workers AI |
 | 定時發布 | 無 | 無 | `src/services/scheduler.ts` Queues + Cron |
 | 速率限制 | 無 | 無 | `src/services/ratelimit.ts` Rate Limiting bindings |
-| 功能開關 | 無 | 無 | `src/services/notify.ts` Flagship |
+| 功能開關 | 無 | 無 | `src/services/flags.ts` D1 + FLAG_REGISTRY |
 | API 緩存 | 無 | 無 | `src/services/cache.ts` KV |
 
 ---
@@ -213,7 +214,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | wrangler 4.96.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD` |
 | pnpm | `D:\AI\Cache\pnpm-home` |
 | Node.js >= 18 | 系統 PATH |
-| Cloudflare API Token | 環境變量 `CLOUDFLARE_API_TOKEN`（需 Vectorize/Queues/Flagship 權限） |
+| Cloudflare API Token | 環境變量 `CLOUDFLARE_API_TOKEN`（需 Vectorize/Queues 權限） |
 | JWT_SECRET | wrangler secret（`wrangler secret put JWT_SECRET`） |
 | 前端緩存 | `D:\AI\Cache\pnpm` |
 | 臨時文件 | `D:\AI\Temp` |
@@ -318,17 +319,16 @@ git log --oneline -10
 ## 開發檢查清單
 
 1. 是否有 PbootCMS/Go 版對應實現？優先參考
-2. 是否修改了數據庫表結構？是則停止
-3. 是否引入禁止依賴？
-4. SQL 是否參數化？
-5. 響應格式是否統一 `{code,msg,data}`？
-6. 配置修改後是否清除 KV 緩存（`clearConfigCache` + `clearContentCache`）？
-7. 熱點數據是否走 KV？
-8. 通知服務是否異步觸發（`ctx.waitUntil`）？
-9. Flagship 開關是否檢查？
-10. 內容變更後是否清除 API 緩存？
-11. 圖標是否使用 emoji（非 SVG/字體圖標）？
-12. **是否同步更新了儀表盤的版本更新、API 開發手冊、系統信息？（強制）**
+2. 是否引入禁止依賴？
+3. SQL 是否參數化？
+4. 響應格式是否統一 `{code,msg,data}`？
+5. 配置修改後是否清除 KV 緩存（`clearConfigCache` + `clearContentCache`）？
+6. 熱點數據是否走 KV？
+7. 通知服務是否異步觸發（`ctx.waitUntil`）？
+8. 功能開關是否檢查？
+9. 內容變更後是否清除 API 緩存？
+10. 圖標是否使用 emoji（非 SVG/字體圖標）？
+11. **是否同步更新了儀表盤的版本更新、API 開發手冊、系統信息？（強制）**
 
 ---
 
@@ -382,7 +382,6 @@ git log --oneline -10
 | Queues 操作 | 10,000/天 | 定時發布低頻 | 充足 |
 | Vectorize | 3,000 萬查詢維度/月 | 1 萬文章 × 768 維 = 768 萬 | 充足 |
 | Workers AI | 10,000 神經網絡請求/天 | 搜索+索引 | 需監控 |
-| Flagship | 未公開定價 | 需 Dashboard 確認 | 待確認 |
 
 ---
 
@@ -391,11 +390,6 @@ git log --oneline -10
 | 日期 | 修改內容 | 修改人 |
 |------|---------|--------|
 | 2026-07-16 | 初始創建 | AI Assistant |
-| 2026-07-17 | 技術棧更正為 TS+Hono；補充通知/CORS/模型分類/圖片外鏈；精簡重構全文；補充環境位置與命令 | AI Assistant |
-| 2026-07-17 | 全盤 emoji 圖標；媒體庫選擇器；儀表盤 Tab；CF Email Service；Webhook 修復；日誌 Tab 修正 | AI Assistant |
-| 2026-07-17 | 架構升級：Queues 定時發布、Vectorize 語義搜索、Rate Limiting、Flagship 功能開關、KV API 緩存、Service Bindings、Rust 遷移路徑 | AI Assistant |
-| 2026-07-17 | Flagship 混合模式（D1 回退）+ 設置頁開關整合；儀表盤同步更新規則寫入 AGENTS.md；儀表盤版本/API手冊/系統信息全面更新 | AI Assistant |
-| 2026-07-17 | 功能開關標準化架構：flags.ts 註冊表驅動 + autoRouteProtection API 攔截 + FeatureGate 組件化前端控制 | AI Assistant |
-| 2026-07-17 | 系統設置分區塊獨立保存（每區塊 Save 按鈕）；角色權限改為菜單樹驅動（mcode 聯動）；用戶管理權限預覽；菜單管理 mcode 權限鍵顯示 + scode→mcode 修正；三者關係說明卡片 | AI Assistant |
-| 2026-07-17 | API 菜單權限攔截：requireMenuPermission 中間件（URL→mcode 緩存 + claims.permissions 校驗）；auth.ts 新增 hasMenuPermission；角色列表 API 增加 userCount/levelCount；認證中間件設置 claims 上下文 | AI Assistant |
-| 2026-07-17 | 登錄頁無限刷新修復（401 守衛 + 無 Token 跳過 flags 獲取 + 401 不重定向 /login）；系統用戶改為單選角色（radio UI）；角色管理增加權限數/用戶數列 + 系統角色徽章；側邊欄按 mcode 權限過濾 + 用戶信息顯示；後端內容排序改為 PbootCMS 邏輯（istop DESC, isrecommend DESC, isheadline DESC, sorting ASC, date DESC, id DESC）；內容排序支持內聯修改 + 置頂/推薦行視覺指示；幻燈片增加分組標籤 + 自定義分組名（localStorage）；儀表板版本日期補時分秒 + 香港時區 | AI Assistant |
+| 2026-07-17 | v0.2-v0.5：技術棧更正 TS+Hono；全盤 emoji 圖標；媒體庫選擇器；儀表盤 Tab；架構升級（Queues/Vectorize/Rate Limiting/KV 緩存/Service Bindings）；功能開關標準化架構（flags.ts 註冊表 + autoRouteProtection + FeatureGate） | AI Assistant |
+| 2026-07-17 | v0.6-v0.9：系統設置分區塊獨立保存；角色權限菜單樹驅動；用戶管理權限預覽；菜單管理 mcode 權限鍵；API 菜單權限攔截中間件；登錄頁無限刷新修復；系統用戶單選角色；側邊欄 mcode 權限過濾；後端內容排序 PbootCMS 邏輯；幻燈片分組標籤 | AI Assistant |
+| 2026-07-17 | v1.0.0：登錄頁無限刷新根因修復（FeatureFlagProvider 移至 Layout + 全局重定向鎖 + Rocket Loader 繞過）；功能開關改為始終 D1 模式；S3 存儲獨立分塊 + 鎖定防誤觸 + 折疊；幻燈片移動端圖片預覽；AGENTS.md 移除數據庫零改動約束 + Flagship 更新為始終 D1 + 精簡重複內容 | AI Assistant |

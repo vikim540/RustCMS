@@ -28,6 +28,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 40, max: 49, title: 'WebAPI', icon: '</>', desc: 'API 接口與跨域配置' },
   { min: 50, max: 59, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
   { min: 60, max: 69, title: '搜索引擎推送', icon: '🔍', desc: '百度/神馬等搜索引擎收錄推送' },
+  { min: 70, max: 79, title: 'S3 存儲配置', icon: '💾', desc: 'R2/S3 兼容存儲（默認鎖定，點擊解鎖後可修改）' },
   { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
 ]
 
@@ -69,6 +70,13 @@ export default function Settings() {
   const [testWebhookLoading, setTestWebhookLoading] = useState(false)
   const { flags, isEnabled, toggle: toggleFlag, refresh: refreshFlags } = useFeatureFlags()
   const [flagUpdating, setFlagUpdating] = useState<string | null>(null)
+
+  // S3 存儲鎖定狀態（默認鎖定防誤觸）
+  const [s3Unlocked, setS3Unlocked] = useState(false)
+  // S3 存儲折疊狀態（默認折疊，很少改動）
+  const [s3Collapsed, setS3Collapsed] = useState(true)
+  // 搜索引擎推送折疊狀態（默認折疊，很少改動）
+  const [seoCollapsed, setSeoCollapsed] = useState(true)
 
   /** 拉取全部配置 */
   const fetchConfigs = useCallback(async () => {
@@ -218,7 +226,8 @@ export default function Settings() {
 
     for (const config of configs) {
       if (HIDDEN_CONFIGS.has(config.name)) continue
-      if ((config.sorting >= 10 && config.sorting <= 19) || (config.sorting >= 70 && config.sorting <= 79)) continue
+      // sorting 10-19 是站點信息，由單獨頁面管理
+      if (config.sorting >= 10 && config.sorting <= 19) continue
 
       if (!mailEnabled) {
         if (config.sorting >= 90 && config.sorting <= 99) continue
@@ -248,7 +257,7 @@ export default function Settings() {
   }, [configs, mailEnabled, webhookEnabled])
 
   /** 渲染單個配置行 */
-  const renderConfigRow = (config: Config) => {
+  const renderConfigRow = (config: Config, disabled = false) => {
     const isSwitch = config.type === '1'
     const val = currentValue(config)
     const isOn = val === '1'
@@ -260,6 +269,7 @@ export default function Settings() {
         className={cn(
           'flex items-center justify-between gap-4 py-3 border-b last:border-b-0',
           hasChange && 'bg-amber-50/50 -mx-4 px-4',
+          disabled && 'opacity-50 pointer-events-none',
         )}
       >
         <div className="flex-1 min-w-0">
@@ -278,9 +288,11 @@ export default function Settings() {
             <button
               type="button"
               onClick={() => toggleSwitch(config)}
+              disabled={disabled}
               className={cn(
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 isOn ? 'bg-primary' : 'bg-muted',
+                disabled && 'cursor-not-allowed',
               )}
               aria-label={isOn ? '關閉' : '開啟'}
             >
@@ -296,7 +308,8 @@ export default function Settings() {
               type="text"
               value={val}
               onChange={(e) => updateValue(config.name, e.target.value)}
-              className="w-64 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={disabled}
+              className="w-64 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted disabled:cursor-not-allowed"
               placeholder="請輸入配置值"
             />
           )}
@@ -305,7 +318,7 @@ export default function Settings() {
     )
   }
 
-  /** 渲染分組卡片（含獨立保存按鈕） */
+  /** 渲染分組卡片（含獨立保存按鈕，S3/SEO 支持折疊與鎖定） */
   const renderSectionCard = (group: ConfigGroup, items: Config[], isOther = false) => {
     const changedCount = getSectionChangedCount(items)
     const isSaving = savingSection === group.min
@@ -313,16 +326,37 @@ export default function Settings() {
       ? { ...group, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' }
       : group
 
+    const isS3Group = displayGroup.min === 70
+    const isSeoGroup = displayGroup.min === 60
+    const isCollapsible = isS3Group || isSeoGroup
+    const isCollapsed = isS3Group ? s3Collapsed : isSeoGroup ? seoCollapsed : false
+    const isLocked = isS3Group && !s3Unlocked
+
     return (
       <div key={displayGroup.min} className="bg-white rounded-lg border overflow-hidden">
         {/* 卡片頭部 */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b bg-gradient-to-r from-secondary/40 to-secondary/10">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            {/* 折疊/展開按鈕（S3 和 SEO 分組） */}
+            {isCollapsible && (
+              <button
+                onClick={() => isS3Group ? setS3Collapsed(!s3Collapsed) : setSeoCollapsed(!seoCollapsed)}
+                className="text-sm hover:text-primary transition-colors shrink-0"
+                aria-label={isCollapsed ? '展開' : '收起'}
+              >
+                {isCollapsed ? '➡️' : '⬇️'}
+              </button>
+            )}
             <span className="text-lg shrink-0">{displayGroup.icon}</span>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold">{displayGroup.title}</h2>
                 <span className="text-xs text-muted-foreground">({items.length} 項)</span>
+                {isLocked && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-600">
+                    🔒 已鎖定
+                  </span>
+                )}
                 {changedCount > 0 && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 text-amber-800">
                     {changedCount} 項待保存
@@ -332,64 +366,93 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground truncate">{displayGroup.desc}</p>
             </div>
           </div>
-          {/* 獨立保存按鈕 */}
-          <button
-            onClick={() => handleSaveSection(displayGroup, items)}
-            disabled={isSaving || changedCount === 0}
-            className={cn(
-              'flex items-center gap-1.5 px-3.5 py-1.5 text-sm rounded-md transition-all shrink-0',
-              changedCount > 0
-                ? 'bg-primary text-primary-foreground hover:opacity-90'
-                : 'bg-muted text-muted-foreground cursor-not-allowed',
-            )}
-          >
-            {isSaving ? (
-              <span className="animate-spin inline-block text-sm">🔄</span>
-            ) : (
-              <span className="text-sm">💾</span>
-            )}
-            {isSaving ? '保存中...' : changedCount > 0 ? `保存 (${changedCount})` : '保存'}
-          </button>
-        </div>
-        {/* 配置項 */}
-        <div className="px-4">
-          {items.map(renderConfigRow)}
-        </div>
-        {/* 通知配置分組：測試按鈕 */}
-        {displayGroup.min === 50 && (mailEnabled || webhookEnabled) && (
-          <div className="px-4 py-3 border-t flex flex-wrap items-center gap-2 bg-secondary/10">
-            <span className="text-xs text-muted-foreground mr-1">通知測試：</span>
-            {mailEnabled && (
+          <div className="flex items-center gap-2 shrink-0">
+            {/* S3 解鎖/鎖定按鈕（敏感信息防誤觸） */}
+            {isS3Group && (
               <button
-                type="button"
-                onClick={handleTestMail}
-                disabled={testMailLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {testMailLoading ? (
-                  <span className="animate-spin inline-block text-sm">🔄</span>
-                ) : (
-                  <span className="text-sm">📤</span>
+                onClick={() => setS3Unlocked(!s3Unlocked)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all',
+                  s3Unlocked
+                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700',
                 )}
-                測試郵件
+              >
+                <span className="text-sm">{s3Unlocked ? '🔒' : '🔓'}</span>
+                {s3Unlocked ? '鎖定' : '解鎖修改'}
               </button>
             )}
-            {webhookEnabled && (
+            {/* 獨立保存按鈕（S3 鎖定時隱藏） */}
+            {(!isS3Group || s3Unlocked) && (
               <button
-                type="button"
-                onClick={handleTestWebhook}
-                disabled={testWebhookLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={() => handleSaveSection(displayGroup, items)}
+                disabled={isSaving || changedCount === 0}
+                className={cn(
+                  'flex items-center gap-1.5 px-3.5 py-1.5 text-sm rounded-md transition-all',
+                  changedCount > 0
+                    ? 'bg-primary text-primary-foreground hover:opacity-90'
+                    : 'bg-muted text-muted-foreground cursor-not-allowed',
+                )}
               >
-                {testWebhookLoading ? (
+                {isSaving ? (
                   <span className="animate-spin inline-block text-sm">🔄</span>
                 ) : (
-                  <span className="text-sm">🪝</span>
+                  <span className="text-sm">💾</span>
                 )}
-                測試 Webhook
+                {isSaving ? '保存中...' : changedCount > 0 ? `保存 (${changedCount})` : '保存'}
               </button>
             )}
           </div>
+        </div>
+        {/* 配置項（折疊時隱藏） */}
+        {!isCollapsed && (
+          <>
+            <div className="px-4">
+              {items.map((config) => renderConfigRow(config, isLocked))}
+            </div>
+            {/* S3 鎖定提示 */}
+            {isLocked && (
+              <div className="px-4 py-2.5 bg-gray-50 text-center text-xs text-muted-foreground border-t">
+                🔒 敏感信息已鎖定防誤觸，點擊「解鎖修改」按鈕進行編輯
+              </div>
+            )}
+            {/* 通知配置分組：測試按鈕 */}
+            {displayGroup.min === 50 && (mailEnabled || webhookEnabled) && (
+              <div className="px-4 py-3 border-t flex flex-wrap items-center gap-2 bg-secondary/10">
+                <span className="text-xs text-muted-foreground mr-1">通知測試：</span>
+                {mailEnabled && (
+                  <button
+                    type="button"
+                    onClick={handleTestMail}
+                    disabled={testMailLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {testMailLoading ? (
+                      <span className="animate-spin inline-block text-sm">🔄</span>
+                    ) : (
+                      <span className="text-sm">📤</span>
+                    )}
+                    測試郵件
+                  </button>
+                )}
+                {webhookEnabled && (
+                  <button
+                    type="button"
+                    onClick={handleTestWebhook}
+                    disabled={testWebhookLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {testWebhookLoading ? (
+                      <span className="animate-spin inline-block text-sm">🔄</span>
+                    ) : (
+                      <span className="text-sm">🪝</span>
+                    )}
+                    測試 Webhook
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     )
@@ -451,13 +514,10 @@ export default function Settings() {
           <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-indigo-100 bg-white/50">
             <span>🚩</span>
             <h2 className="font-semibold text-indigo-900">功能開關</h2>
-            <span className="text-xs text-indigo-600">
-              （{flags[0]?.managedBy === 'flagship' ? 'Flagship 管理' : '本地管理'}）
-            </span>
+            <span className="text-xs text-indigo-600">（後台直接管理，一鍵開關相關功能）</span>
           </div>
           <div className="px-5 py-4 space-y-3">
             {flags.map((flag) => {
-              const isFlagshipManaged = flag.managedBy === 'flagship'
               const isUpdating = flagUpdating === flag.key
               return (
                 <div
@@ -480,47 +540,28 @@ export default function Settings() {
                     </span>
                   </div>
                   <div className="shrink-0">
-                    {isFlagshipManaged ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">由 Flagship 管理</span>
-                        <div
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFlag(flag.key, flag.enabled)}
+                      disabled={isUpdating}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                        flag.enabled ? 'bg-primary' : 'bg-muted',
+                        isUpdating && 'opacity-50 cursor-not-allowed',
+                      )}
+                      aria-label={flag.enabled ? '關閉' : '開啟'}
+                    >
+                      {isUpdating ? (
+                        <span className="animate-spin inline-block text-sm absolute left-3.5">🔄</span>
+                      ) : (
+                        <span
                           className={cn(
-                            'relative inline-flex h-6 w-11 items-center rounded-full',
-                            flag.enabled ? 'bg-primary' : 'bg-muted',
+                            'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                            flag.enabled ? 'translate-x-6' : 'translate-x-1',
                           )}
-                        >
-                          <span
-                            className={cn(
-                              'inline-block h-4 w-4 transform rounded-full bg-white shadow',
-                              flag.enabled ? 'translate-x-6' : 'translate-x-1',
-                            )}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFlag(flag.key, flag.enabled)}
-                        disabled={isUpdating}
-                        className={cn(
-                          'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                          flag.enabled ? 'bg-primary' : 'bg-muted',
-                          isUpdating && 'opacity-50 cursor-not-allowed',
-                        )}
-                        aria-label={flag.enabled ? '關閉' : '開啟'}
-                      >
-                        {isUpdating ? (
-                          <span className="animate-spin inline-block text-sm absolute left-3.5">🔄</span>
-                        ) : (
-                          <span
-                            className={cn(
-                              'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                              flag.enabled ? 'translate-x-6' : 'translate-x-1',
-                            )}
-                          />
-                        )}
-                      </button>
-                    )}
+                        />
+                      )}
+                    </button>
                   </div>
                 </div>
               )

@@ -58,6 +58,9 @@ export interface ApiResponse<T = unknown> {
   meta?: { page: number; pagesize: number; total: number }
 }
 
+/** 全局重定向鎖 — 防止多個並發 401 同時觸發重定向導致無限刷新 */
+let isRedirectingToLogin = false
+
 /** API 請求封裝 */
 async function request<T>(
   path: string,
@@ -75,8 +78,11 @@ async function request<T>(
   if (res.status === 401) {
     clearToken()
     clearUserInfo()
-    // 避免在 /login 頁面觸發無限刷新
-    if (window.location.pathname !== '/login') {
+    // 全局鎖：只允許一次重定向，避免並發 401 重複觸發
+    // 同時檢查當前路徑是否已經在 /login（含尾斜杠變體）
+    const onLoginPage = window.location.pathname.replace(/\/+$/, '') === '/login'
+    if (!onLoginPage && !isRedirectingToLogin) {
+      isRedirectingToLogin = true
       window.location.href = '/login'
     }
     throw new Error('登錄已過期,請重新登錄')

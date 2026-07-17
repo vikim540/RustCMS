@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { api, clearToken, getUserInfo, clearUserInfo } from '../lib/api'
 import { cn } from '../lib/utils'
+import { FeatureFlagProvider } from '../hooks/useFeatureFlags'
 
 /** 模型數據結構 */
 interface Model {
@@ -208,6 +209,7 @@ export default function Layout() {
   }
 
   return (
+    <FeatureFlagProvider>
     <div className="flex h-screen">
       {/* 側邊欄 */}
       <aside className="w-56 bg-white border-r flex flex-col">
@@ -311,5 +313,6 @@ export default function Layout() {
         <Outlet />
       </main>
     </div>
+    </FeatureFlagProvider>
   )
 }
