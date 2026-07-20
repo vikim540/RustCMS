@@ -98,6 +98,11 @@ export default function Slides() {
   // 壓縮對話框狀態：記錄待壓縮的圖片及其目標欄位
   const [pendingSlideImage, setPendingSlideImage] = useState<{ file: File; target: 'desktop' | 'mobile' } | null>(null)
 
+  // ─── 拖拽排序狀態 ────────────────────────────────────────
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)
+  const [sortingUpdate, setSortingUpdate] = useState(false)
+
   // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
   // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
   const { uploading, progress, error: uploadError, uploadSingle, clearError } = useImageUpload({
@@ -218,17 +223,21 @@ export default function Slides() {
     setEditingGroupId(null)
   }
 
-  // 新增分組
+  // 新增分組 — ID 自動遞增，名稱可選
   const handleAddGroup = () => {
-    const gid = newGroupId.trim()
-    const name = newGroupName.trim()
-    if (!gid || !name) return
-    const updated = { ...groupNames, [gid]: name }
+    // 計算下一個可用的分組 ID（數字遞增，不允許重複）
+    const existingIds = uniqueGroups.map((g) => parseInt(g, 10)).filter((n) => !isNaN(n))
+    const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0
+    const nextGid = String(maxId + 1)
+    const name = newGroupName.trim() || `分組 ${nextGid}`
+    const updated = { ...groupNames, [nextGid]: name }
     setGroupNames(updated)
     saveGroupNames(updated)
     setNewGroupMode(false)
-    setNewGroupId('')
+    setNewGroupId(nextGid)
     setNewGroupName('')
+    // 自動切換到新分組
+    setActiveGroup(nextGid)
   }
 
   /** 開啟新增對話框 */
@@ -301,6 +310,74 @@ export default function Slides() {
       setError(err instanceof Error ? err.message : '刪除失敗')
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  /** 拖拽開始 */
+  const handleDragStart = (id: number) => {
+    setDraggingId(id)
+  }
+
+  /** 拖拽經過某行 */
+  const handleDragOver = (e: React.DragEvent, id: number) => {
+    e.preventDefault()
+    if (id !== draggingId) setDragOverId(id)
+  }
+
+  /** 拖拽放下 — 重新排序 */
+  const handleDrop = async (targetId: number) => {
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null)
+      setDragOverId(null)
+      return
+    }
+    // 取得當前列表的排序順序
+    const ordered = [...filteredSlides]
+    const fromIdx = ordered.findIndex((s) => s.id === draggingId)
+    const toIdx = ordered.findIndex((s) => s.id === targetId)
+    if (fromIdx < 0 || toIdx < 0) return
+    // 移動元素
+    const [moved] = ordered.splice(fromIdx, 1)
+    ordered.splice(toIdx, 0, moved)
+    // 重新分配 sorting 值
+    const items = ordered.map((s, idx) => ({ id: s.id, sorting: idx }))
+    // 先本地更新 UI
+    setSlides((prev) => {
+      const updates = new Map(items.map((i) => [i.id, i.sorting]))
+      return prev.map((s) =>
+        updates.has(s.id) ? { ...s, sorting: updates.get(s.id)! } : s,
+      )
+    })
+    setDraggingId(null)
+    setDragOverId(null)
+    // 異步更新後端
+    setSortingUpdate(true)
+    try {
+      await api.put('/admin/slides/batch-sorting', { items })
+    } catch {
+      // 失敗時重新載入
+      await fetchSlides()
+    } finally {
+      setSortingUpdate(false)
+    }
+  }
+
+  /** 手動修改排序值 */
+  const handleSortingChange = async (id: number, newSorting: number) => {
+    // 先本地更新
+    setSlides((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, sorting: newSorting } : s)),
+    )
+    // 異步更新後端
+    setSortingUpdate(true)
+    try {
+      await api.put('/admin/slides/batch-sorting', {
+        items: [{ id, sorting: newSorting }],
+      })
+    } catch {
+      await fetchSlides()
+    } finally {
+      setSortingUpdate(false)
     }
   }
 
@@ -401,49 +478,39 @@ export default function Slides() {
             <div className="inline-flex items-center gap-1">
               <input
                 type="text"
-                value={newGroupId}
-                onChange={(e) => setNewGroupId(e.target.value)}
-                placeholder="ID"
-                className="px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring w-16"
-              />
-              <input
-                type="text"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleAddGroup()
                   if (e.key === 'Escape') {
                     setNewGroupMode(false)
-                    setNewGroupId('')
                     setNewGroupName('')
                   }
                 }}
-                placeholder="分組名稱"
-                className="px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring w-28"
+                placeholder="分組名稱（可選）"
+                className="px-2 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring w-32"
                 autoFocus
               />
               <button
                 onClick={handleAddGroup}
-                className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:opacity-90"
+                className="px-2 py-1 bg-primary text-primary-foreground rounded-md text-xs hover:opacity-90"
+                title="確認新增"
               >
                 ✅
               </button>
               <button
-                onClick={() => {
-                  setNewGroupMode(false)
-                  setNewGroupId('')
-                  setNewGroupName('')
-                }}
-                className="px-2 py-1 text-xs text-muted-foreground hover:bg-accent rounded-md"
+                onClick={() => { setNewGroupMode(false); setNewGroupName('') }}
+                className="px-2 py-1 bg-secondary text-secondary-foreground rounded-md text-xs hover:bg-accent"
+                title="取消"
               >
-                ❌
+                ✕
               </button>
             </div>
           ) : (
             <button
               onClick={() => setNewGroupMode(true)}
-              className="px-3 py-1.5 rounded-md text-sm text-muted-foreground border border-dashed hover:bg-accent transition-colors"
-              title="新增分組名稱映射"
+              className="px-3 py-1.5 rounded-md text-sm font-medium bg-secondary/50 text-muted-foreground hover:bg-accent border border-dashed border-slate-300 transition-colors"
+              title="新增分組（ID自動遞增）"
             >
               ➕ 新增分組
             </button>
@@ -485,10 +552,18 @@ export default function Slides() {
       {/* 幻燈片表格 */}
       {!loading && filteredSlides.length > 0 && (
         <div className="bg-white rounded-lg border overflow-hidden">
+          {/* 排序更新提示 */}
+          {sortingUpdate && (
+            <div className="px-4 py-2 bg-blue-50 text-blue-600 text-xs flex items-center gap-2 border-b border-blue-100">
+              <span className="animate-spin inline-block">🔄</span>
+              正在更新排序...
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-secondary/50">
+                  <th className="px-2 py-3 w-8"></th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">分組</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">桌面版圖片</th>
@@ -504,8 +579,20 @@ export default function Slides() {
                 {filteredSlides.map((item) => (
                   <tr
                     key={item.id}
-                    className="border-b last:border-0 hover:bg-accent/50 transition-colors"
+                    draggable
+                    onDragStart={() => handleDragStart(item.id)}
+                    onDragOver={(e) => handleDragOver(e, item.id)}
+                    onDrop={() => handleDrop(item.id)}
+                    onDragEnd={() => { setDraggingId(null); setDragOverId(null) }}
+                    className={cn(
+                      'border-b last:border-0 hover:bg-accent/50 transition-colors',
+                      draggingId === item.id && 'opacity-40',
+                      dragOverId === item.id && 'bg-blue-50 border-t-2 border-t-blue-400',
+                    )}
                   >
+                    <td className="px-2 py-3 text-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500" title="拖拽排序">
+                      ⋮⋮
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{item.id}</td>
                     <td className="px-4 py-3">
                       <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
@@ -553,7 +640,27 @@ export default function Slides() {
                         <span className="text-muted-foreground text-xs">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.sorting ?? 0}</td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        value={item.sorting ?? 0}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0
+                          // 僅本地更新，失焦時提交
+                          setSlides((prev) =>
+                            prev.map((s) => (s.id === item.id ? { ...s, sorting: val } : s)),
+                          )
+                        }}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value) || 0
+                          if (val !== item.sorting) {
+                            handleSortingChange(item.id, val)
+                          }
+                        }}
+                        className="w-14 px-1.5 py-1 text-center border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
+                        title="修改排序值（失焦後自動保存）"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
@@ -579,6 +686,12 @@ export default function Slides() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="px-4 py-2 bg-slate-50 text-xs text-muted-foreground border-t flex items-center gap-2">
+            <span>💡 提示：</span>
+            <span>拖拽 <span className="font-mono text-slate-500">⋮⋮</span> 圖示可調整順序</span>
+            <span className="text-slate-300">|</span>
+            <span>直接修改排序輸入框，失焦後自動保存</span>
           </div>
         </div>
       )}

@@ -43,11 +43,32 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.5.5',
+    date: '2026-07-20 21:00:00',
+    icon: '🔑',
+    latest: true,
+    changes: '權限系統根因修復 — JWT 權限實時刷新：後端 admin 認證中間件每次請求為非超管用戶從數據庫重新加載權限（reloadUserPermissions），解決角色權限變更後 JWT 中權限過時的問題（無需重新登錄即可生效）；handleProfile 改為從數據庫重新加載權限（非 JWT 快照）；loadUserPermissions 優化為單次 IN 查詢（替代逐角色查詢）；禁用用戶返回 401 觸發前端登出；回收站路由權限修復（contents/trash、restore、permanent 改用 M208 回收站權限，不再被 M201 文章列表攔截）；前端 Layout 掛載時拉取 /auth/profile 刷新 localStorage 權限（Outlet key 綁定權限變化，確保 RequirePermission 路由守衛即時生效）',
+  },
+  {
+    version: 'v1.5.4',
+    date: '2026-07-20 20:30:00',
+    icon: '🇭🇰',
+    latest: false,
+    changes: '公司/站點信息香港本地化 + 公開公司 API：公司信息移除內地專用字段（QQ、郵編 postcode、ICP 備案號），新增 WhatsApp 字段（香港主流通訊），重命名標籤（法人代表→董事/公司秘書、營業執照號→商業登記證號碼、微信→WeChat 微信），placeholder 改為香港格式（8位電話號碼、.com.hk 郵箱）；站點信息移除 ICP 備案號（與公司信息重複且內地專用）和主題模板（headless CMS 無模板系統），域名 placeholder 改為 cms.cmermedical.com.hk，版權信息 placeholder 改為英文格式；後端 SITE_FIELDS/COMPANY_FIELDS 白名單同步更新，getOrCreateSite/getOrCreateCompany INSERT 語句對齊；DB 遷移 0005 新增 ay_company.whatsapp 列，ay_site.lang 從 zh-cn 更新為 zh-hk；新增公開 API GET /api/v1/company（參考 Go 版 /api/company，過濾敏感字段僅返回聯繫信息）；storage.ts 公司媒體引用新增 WhatsApp 二維碼列，標籤更新為 WeChat 二維碼/商業登記證',
+  },
+  {
+    version: 'v1.5.3',
+    date: '2026-07-20 23:45:00',
+    icon: '🔐',
+    latest: false,
+    changes: '權限系統全面修復 + 幻燈片拖拽排序：後端新增 forbidden() 函數返回 HTTP 403（區分 401 未認證 vs 403 權限拒絕），requireMenuPermission 和 requireSuperAdmin 改用 403；前端 request() 僅 HTTP 401 時重定向 login，403 時彈出權限拒絕 toast 提示（Layout 註冊 setPermissionDeniedCallback，右上角紅色 toast 3秒自動消失）；App.tsx 新增 RequirePermission 路由守衛組件，所有 24 個頁面路由均包裹權限檢查（mcode 映射，storage/database 為 __super__ 僅超管），無權限時顯示 🔒 提示頁而非重定向 login；幻燈片管理新增分組 ID 自動遞增（計算 maxId+1，不允許重複），分組名稱改為可選（留空自動命名）；幻燈片表格新增拖拽排序（HTML5 draggable，拖拽 ⋮⋮ 圖示調整順序，即時更新後端 batch-sorting API）+ 手動排序輸入框（失焦自動保存）；新增 PUT /admin/slides/batch-sorting 批量排序 API（D1 batch 更新）',
+  },
+  {
     version: 'v1.5.2',
     date: '2026-07-20 23:00:00',
     icon: '📐',
-    latest: true,
-    changes: '媒體庫尺寸顯示 + 壓縮比例縮放 + 權限修復：媒體庫瀑布流卡片新增圖片尺寸徽章（ImageWithDimensions 組件，onLoad 取得 naturalWidth/naturalHeight，左下角黑色半透明徽章顯示 寬×高）；詳情面板也顯示前端取得的圖片尺寸；壓縮對話框從獨立「最大寬度1920 + 最大高度1080」改為單一「最大邊長」輸入（imageCompress.ts 新增 maxDimension 選項，browser-image-compression 的 maxWidthOrHeight 按原始比例等比縮放，不會拉伸變形），附帶四個尺寸預設（PC 1920 / Mobile 1080 / 縮略 800 / 小圖 400）；DB 新增 M301 媒體庫子菜單（M300 多媒體為父級容器，M301 為實際權限鍵，url=/admin/media 對應後端中間件），兩個角色均已加入 M301；後端 media 中間件註釋從 M300 更新為 M301；Layout.tsx LABEL_MCODE_MAP '媒體庫' 從 M300 改為 M301；權限審計：所有 24 個前端頁面均有對應 mcode 權限控制（資料庫管理/存儲設置僅超管可見），上傳端點 /admin/upload 保留 requireAuth（所有可上傳角色均已含 M301）',
+    latest: false,
+    changes: '媒體庫尺寸顯示 + 壓縮比例縮放 + 權限修復：媒體庫瀑布流卡片新增圖片尺寸徽章（ImageWithDimensions 組件，onLoad 取得 naturalWidth/naturalHeight，左下角黑色半透明徽章顯示 寬×高）；詳情面板也顯示前端取得的圖片尺寸；壓縮對話框從獨立「最大寬度1920 + 最大高度1080」改為單一「最大邊長」輸入（imageCompress.ts 新增 maxDimension 選項，browser-image-compression 的 maxWidthOrHeight 按原始比例等比縮放，不會拉伸變形），附帶四個尺寸預設（PC 1920 / Mobile 1080 / 縮略 800 / 小圖 400）；DB 新增 M301 媒體庫子菜單（M300 多媒體為父級容器，M301 為實際權限鍵，url=/admin/media 對應後端中間件），兩個角色均已加入 M301；後端 media 中間件註釋從 M300 更新為 M301；Layout.tsx LABEL_MCODE_MAP「媒體庫」從 M300 改為 M301；權限審計：所有 24 個前端頁面均有對應 mcode 權限控制（資料庫管理/存儲設置僅超管可見），上傳端點 /admin/upload 保留 requireAuth（所有可上傳角色均已含 M301）',
   },
   {
     version: 'v1.5.1',
@@ -193,6 +214,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/auth/profile', desc: '個人信息', auth: true },
   // 公開接口 (60次/分/IP)
   { method: 'GET', path: '/api/v1/site', desc: '站點信息', auth: false },
+  { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=)', auth: false },
   { method: 'GET', path: '/api/v1/contents/:id', desc: '內容詳情', auth: false },
@@ -237,6 +259,7 @@ const ERROR_CODES: { code: number; desc: string; color: string }[] = [
   { code: 2003, desc: 'Token 已過期', color: 'red' },
   { code: 2004, desc: 'Token 已登出', color: 'red' },
   { code: 2005, desc: '無權限訪問此功能', color: 'red' },
+  { code: 2006, desc: '用戶已被禁用或不存在', color: 'red' },
   { code: 4290, desc: '請求過於頻繁 (Rate Limited)', color: 'red' },
 ]
 

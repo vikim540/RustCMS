@@ -42,6 +42,11 @@ export function err(msg: string, code = 1): Response {
   return Response.json({ code, msg } satisfies ApiResponse, { status });
 }
 
+/** 權限拒絕響應 (HTTP 403) — 不觸發前端登出，僅提示無權限 */
+export function forbidden(msg: string, code = 2005): Response {
+  return Response.json({ code, msg } satisfies ApiResponse, { status: 403 });
+}
+
 /** 404 響應 */
 export function notFound(msg: string): Response {
   return Response.json({ code: 1004, msg } satisfies ApiResponse, { status: 404 });

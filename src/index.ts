@@ -17,8 +17,8 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
-import { isTokenBlacklisted, hasPermission, hasMenuPermission } from './services/auth';
-import { ok, okData, err } from './utils/response';
+import { isTokenBlacklisted, hasPermission, hasMenuPermission, reloadUserPermissions } from './services/auth';
+import { ok, okData, err, forbidden } from './utils/response';
 import * as authService from './services/auth';
 import * as configService from './services/config';
 import * as sortService from './services/sort';
@@ -201,7 +201,7 @@ function requireMenuPermission(menuUrl: string): MiddlewareHandler<AppEnv> {
     if (!mcode) return await next(); // 找不到 mcode 時放行 (避免誤攔)
 
     if (!hasMenuPermission(claims, mcode)) {
-      return err('無權限訪問此功能', 2005);
+      return forbidden('無權限訪問此功能');
     }
     await next();
   };
@@ -216,7 +216,7 @@ function requireSuperAdmin(): MiddlewareHandler<AppEnv> {
     const claims = c.get('claims');
     if (!claims) return await next(); // 未認證由 requireAuth 處理
     if (claims.isSuper) return await next(); // 超級管理員放行
-    return err('僅超級管理員可訪問此功能', 2005);
+    return forbidden('僅超級管理員可訪問此功能');
   };
 }
 
@@ -253,6 +253,11 @@ app.get('/api/v1/site', async (c) => {
   const site = await configService.getSiteInfo(c.env.DB);
   if (!site) return err('站點信息未配置', 1004);
   return okData(site, '成功');
+});
+
+app.get('/api/v1/company', async (c) => {
+  const company = await extraService.getPublicCompany(c.env.DB);
+  return okData(company, '成功');
 });
 
 app.get('/api/v1/sorts', async (c) => sortService.handleSortTree(c.env.DB));
@@ -305,9 +310,19 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
 // 在 requireMenuPermission 之前執行, 將驗證後的 claims 存入上下文
 // 未認證請求不放行 (由各 handler 中的 requireAuth 返回 401)
+// 非超管用戶每次請求重新加載權限，確保角色權限變更後即時生效（無需重新登錄）
 app.use('/api/v1/admin/*', async (c, next) => {
   const claims = await requireAuth(c);
   if (claims) {
+    if (!claims.isSuper) {
+      // 非超管用戶：從數據庫重新加載權限（解決 JWT 中權限過時的問題）
+      const freshPerms = await reloadUserPermissions(c.env.DB, Number(claims.sub));
+      if (freshPerms === null) {
+        // 用戶不存在或已禁用 → 返回 401，觸發前端登出
+        return err('用戶已被禁用或不存在', 2006);
+      }
+      claims.permissions = freshPerms;
+    }
     c.set('claims', claims);
   }
   await next();
@@ -383,7 +398,17 @@ app.use('/api/v1/admin/storage/*', requireSuperAdmin());
 app.use('/api/v1/admin/configs/*', requireMenuPermission('/admin/system/config'));
 app.use('/api/v1/admin/models/*', requireMenuPermission('/admin/content/model'));
 // 補齊: 內容管理及擴展內容路由的權限保護（防非授權用戶繞過前端直接調用 API）
-app.use('/api/v1/admin/contents/*', requireMenuPermission('/admin/content/index'));     // M201 文章列表
+// 回收站相關路由（trash, restore, permanent）使用 M208 權限，其他使用 M201
+app.use('/api/v1/admin/contents/*', async (c, next) => {
+  const path = c.req.path;
+  // 回收站相關路由 → M208 回收站權限
+  if (path.endsWith('/contents/trash') ||
+      path.match(/\/contents\/\d+\/(restore|permanent)$/)) {
+    return requireMenuPermission('/admin/content/trash')(c, next);
+  }
+  // 其他內容管理路由 → M201 文章列表權限
+  return requireMenuPermission('/admin/content/index')(c, next);
+});
 app.use('/api/v1/admin/sorts/*', requireMenuPermission('/admin/content/sort'));         // M202 欄目管理
 app.use('/api/v1/admin/singles/*', requireMenuPermission('/admin/content/single'));     // M203 單頁管理
 app.use('/api/v1/admin/messages/*', requireMenuPermission('/admin/content/message'));   // M204 留言管理
@@ -732,6 +757,14 @@ app.put('/api/v1/admin/slides/:id', async (c) => {
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
   return extraService.handleUpdateSlide(c.env.DB, id, body);
+});
+
+app.put('/api/v1/admin/slides/batch-sorting', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  const items = Array.isArray(body?.items) ? body.items : [];
+  return extraService.handleBatchUpdateSlideSorting(c.env.DB, items);
 });
 
 app.delete('/api/v1/admin/slides/:id', async (c) => {

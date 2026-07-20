@@ -61,6 +61,14 @@ export interface ApiResponse<T = unknown> {
 /** 全局重定向鎖 — 防止多個並發 401 同時觸發重定向導致無限刷新 */
 let isRedirectingToLogin = false
 
+/** 全局權限錯誤回調（由 Layout 設置，用於在頁面上顯示提示而非控制台報錯） */
+let permissionDeniedCallback: ((msg: string) => void) | null = null
+
+/** 設置全局權限錯誤回調 */
+export function setPermissionDeniedCallback(cb: ((msg: string) => void) | null): void {
+  permissionDeniedCallback = cb
+}
+
 /** API 請求封裝 */
 async function request<T>(
   path: string,
@@ -75,17 +83,27 @@ async function request<T>(
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
 
+  // 401 = 未認證/token過期 → 清除登入狀態並重定向到 login
   if (res.status === 401) {
     clearToken()
     clearUserInfo()
-    // 全局鎖：只允許一次重定向，避免並發 401 重複觸發
-    // 同時檢查當前路徑是否已經在 /login（含尾斜杠變體）
     const onLoginPage = window.location.pathname.replace(/\/+$/, '') === '/login'
     if (!onLoginPage && !isRedirectingToLogin) {
       isRedirectingToLogin = true
       window.location.href = '/login'
     }
     throw new Error('登錄已過期,請重新登錄')
+  }
+
+  // 403 = 權限拒絕 → 不登出，僅提示無權限
+  if (res.status === 403) {
+    const json: ApiResponse<T> = await res.json()
+    const msg = json.msg || '無權限訪問此功能'
+    // 觸發全局回調（Layout 會顯示 toast 提示）
+    if (permissionDeniedCallback) {
+      permissionDeniedCallback(msg)
+    }
+    throw new Error(msg)
   }
 
   const json: ApiResponse<T> = await res.json()

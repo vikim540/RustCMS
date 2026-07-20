@@ -16,23 +16,38 @@ const SUPER_ADMIN_UCODE = '10001';
  * 加載用戶權限列表
  * 根據 rcodes (逗號分隔的角色代碼) 查詢 ay_role_level, 收集所有不重複的 level 權限鍵
  * 超級管理員返回空數組 (調用方應通過 isSuper 判斷跳過)
+ *
+ * 優化：使用單次 IN 查詢替代逐個角色查詢，減少數據庫往返
  */
-async function loadUserPermissions(db: D1Database, rcodes: string): Promise<string[]> {
+export async function loadUserPermissions(db: D1Database, rcodes: string): Promise<string[]> {
   if (!rcodes) return [];
   const rcodeList = rcodes.split(',').map((r) => r.trim()).filter(Boolean);
   if (rcodeList.length === 0) return [];
 
-  const permissions = new Set<string>();
-  for (const rcode of rcodeList) {
-    const result = await db
-      .prepare('SELECT level FROM ay_role_level WHERE rcode = ?')
-      .bind(rcode)
-      .all<{ level: string }>();
-    for (const row of result.results) {
-      if (row.level) permissions.add(row.level);
-    }
-  }
-  return Array.from(permissions);
+  const placeholders = rcodeList.map(() => '?').join(',');
+  const result = await db
+    .prepare(`SELECT DISTINCT level FROM ay_role_level WHERE rcode IN (${placeholders}) AND level IS NOT NULL AND level != ''`)
+    .bind(...rcodeList)
+    .all<{ level: string }>();
+
+  return result.results.map((r) => r.level).filter(Boolean);
+}
+
+/**
+ * 從數據庫重新加載用戶權限（確保角色權限變更後即時生效）
+ * 用於 admin 中間件和 handleProfile，避免使用 JWT 中的過時權限
+ *
+ * @param db D1 數據庫
+ * @param userId 用戶 ID
+ * @returns 最新權限列表，用戶不存在或已禁用時返回 null
+ */
+export async function reloadUserPermissions(db: D1Database, userId: number): Promise<string[] | null> {
+  const user = await db
+    .prepare('SELECT rcodes FROM ay_user WHERE id = ? AND status = ?')
+    .bind(userId, '1')
+    .first<{ rcodes: string }>();
+  if (!user) return null;
+  return loadUserPermissions(db, user.rcodes || '');
 }
 
 /** 管理員登錄 */
@@ -118,7 +133,7 @@ export async function handleLogin(
   );
 }
 
-/** 獲取當前用戶信息 (含權限信息) */
+/** 獲取當前用戶信息 (含權限信息) — 權限從數據庫重新加載，確保角色變更後即時生效 */
 export async function handleProfile(db: D1Database, claims: JwtClaims): Promise<Response> {
   const stmt = db
     .prepare(
@@ -128,11 +143,14 @@ export async function handleProfile(db: D1Database, claims: JwtClaims): Promise<
   const user = await stmt.first();
   if (!user) return notFound('用戶不存在');
 
+  // 重新從數據庫加載權限（而非使用 JWT 中的快照），確保角色權限變更後即時生效
+  const permissions = claims.isSuper ? [] : await loadUserPermissions(db, (user as { rcodes: string }).rcodes || '');
+
   return okData(
     {
       ...user,
       isSuper: claims.isSuper,
-      permissions: claims.permissions,
+      permissions,
     },
     '成功',
   );

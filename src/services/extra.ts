@@ -377,6 +377,18 @@ export async function handleUpdateSlide(
   return ok('幻燈片更新成功');
 }
 
+/** 批量更新幻燈片排序 */
+export async function handleBatchUpdateSlideSorting(
+  db: D1Database,
+  items: { id: number; sorting: number }[],
+): Promise<Response> {
+  const stmts = items.map((item) =>
+    db.prepare('UPDATE ay_slide SET sorting = ? WHERE id = ? AND acode = ?').bind(item.sorting, item.id, 'cn'),
+  );
+  await db.batch(stmts);
+  return ok('排序更新成功');
+}
+
 /** 刪除幻燈片 */
 export async function handleDeleteSlide(db: D1Database, id: number): Promise<Response> {
   await db.prepare('DELETE FROM ay_slide WHERE id = ? AND acode = ?').bind(id, 'cn').run();
@@ -675,10 +687,10 @@ export async function handleSubmitMessage(
 // 模塊 7: 站點信息 (ay_site) - 單記錄 (acode='cn')
 // ============================================================================
 
-/** 站點字段白名單 */
+/** 站點字段白名單（香港本地化：移除 icp 內地備案、theme 模板） */
 const SITE_FIELDS = [
   'name', 'title', 'subtitle', 'domain', 'keywords', 'description',
-  'logo', 'icp', 'copyright', 'statistical', 'theme', 'lang',
+  'logo', 'copyright', 'statistical', 'lang',
 ];
 
 /** 獲取或創建站點信息 (FirstOrCreate) */
@@ -688,7 +700,7 @@ async function getOrCreateSite(db: D1Database): Promise<Record<string, unknown>>
 
   // 不存在則創建空記錄
   await db.prepare(
-    "INSERT INTO ay_site (acode, name, title, subtitle, domain, keywords, description, logo, icp, copyright, statistical, theme, lang) VALUES ('cn', '', '', '', '', '', '', '', '', '', '', 'default', 'zh-cn')",
+    "INSERT INTO ay_site (acode, name, title, subtitle, domain, keywords, description, logo, copyright, statistical, lang) VALUES ('cn', '', '', '', '', '', '', '', '', '', 'zh-hk')",
   ).run();
   return (await db.prepare('SELECT * FROM ay_site WHERE acode = ? LIMIT 1').bind('cn').first())!;
 }
@@ -733,10 +745,10 @@ export async function handleAdminUpdateSite(
 // 模塊 8: 公司信息 (ay_company) - 單記錄 (acode='cn')
 // ============================================================================
 
-/** 公司字段白名單 */
+/** 公司字段白名單（香港本地化：移除 postcode 郵編、qq、icp，新增 whatsapp） */
 const COMPANY_FIELDS = [
-  'name', 'address', 'postcode', 'contact', 'mobile', 'phone',
-  'fax', 'email', 'qq', 'weixin', 'icp', 'blicense', 'other', 'legal', 'business',
+  'name', 'address', 'contact', 'mobile', 'phone',
+  'fax', 'email', 'weixin', 'whatsapp', 'blicense', 'other', 'legal', 'business',
 ];
 
 /** 獲取或創建公司信息 (FirstOrCreate) */
@@ -746,7 +758,7 @@ async function getOrCreateCompany(db: D1Database): Promise<Record<string, unknow
 
   // 不存在則創建空記錄
   await db.prepare(
-    "INSERT INTO ay_company (acode, name, address, postcode, contact, mobile, phone, fax, email, qq, weixin, icp, blicense, other, legal, business) VALUES ('cn', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '')",
+    "INSERT INTO ay_company (acode, name, address, contact, mobile, phone, fax, email, weixin, whatsapp, blicense, other, legal, business) VALUES ('cn', '', '', '', '', '', '', '', '', '', '', '', '', '')",
   ).run();
   return (await db.prepare('SELECT * FROM ay_company WHERE acode = ? LIMIT 1').bind('cn').first())!;
 }
@@ -755,6 +767,15 @@ async function getOrCreateCompany(db: D1Database): Promise<Record<string, unknow
 export async function handleAdminGetCompany(db: D1Database): Promise<Response> {
   const company = await getOrCreateCompany(db);
   return okData(company, '成功');
+}
+
+/** 公開公司信息（過濾敏感字段，僅返回前台需要的聯繫信息） */
+export async function getPublicCompany(db: D1Database): Promise<Record<string, unknown>> {
+  const row = await db
+    .prepare('SELECT name, address, contact, mobile, phone, fax, email, weixin, whatsapp, other, business FROM ay_company WHERE acode = ? LIMIT 1')
+    .bind('cn')
+    .first();
+  return row ?? {};
 }
 
 /** 後台更新公司信息 (白名單字段動態 UPDATE) */

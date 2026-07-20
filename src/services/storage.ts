@@ -40,7 +40,7 @@ const FILE_REFS: FileRefTable[] = [
   { table: 'ay_slide', idCol: 'id', nameCol: 'title', columns: [{ col: 'pic', label: '輪播圖' }] },
   { table: 'ay_link', idCol: 'id', nameCol: 'name', columns: [{ col: 'logo', label: 'Logo' }] },
   { table: 'ay_site', idCol: 'id', nameCol: 'name', columns: [{ col: 'logo', label: 'Logo' }] },
-  { table: 'ay_company', idCol: 'id', nameCol: 'name', columns: [{ col: 'weixin', label: '微信' }, { col: 'blicense', label: '證照' }] },
+  { table: 'ay_company', idCol: 'id', nameCol: 'name', columns: [{ col: 'weixin', label: 'WeChat 二維碼' }, { col: 'whatsapp', label: 'WhatsApp 二維碼' }, { col: 'blicense', label: '商業登記證' }] },
 ];
 
 /** ay_media_mark 建表 SQL (冪等) */

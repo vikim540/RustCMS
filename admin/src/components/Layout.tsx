@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { api, clearToken, getUserInfo, clearUserInfo } from '../lib/api'
+import { api, clearToken, getUserInfo, clearUserInfo, setPermissionDeniedCallback, setUserInfo, type UserInfo } from '../lib/api'
 import { cn } from '../lib/utils'
 import { FeatureFlagProvider } from '../hooks/useFeatureFlags'
 
@@ -140,7 +140,18 @@ export default function Layout() {
   // 模型列表（掛載時載入一次）
   const [models, setModels] = useState<Model[]>([])
   // 當前用戶信息（用於側邊欄權限過濾）
-  const [userInfo, setUserInfo] = useState(() => getUserInfo())
+  const [userInfo, setUserInfoState] = useState(() => getUserInfo())
+
+  // ─── 權限拒絕 toast 提示 ────────────────────────────────
+  const [permToast, setPermToast] = useState<string | null>(null)
+  useEffect(() => {
+    setPermissionDeniedCallback((msg: string) => {
+      setPermToast(msg)
+      // 3 秒後自動消失
+      setTimeout(() => setPermToast(null), 3000)
+    })
+    return () => setPermissionDeniedCallback(null)
+  }, [])
 
   // 載入模型列表
   useEffect(() => {
@@ -149,6 +160,42 @@ export default function Layout() {
       .then((res) => setModels(res.data ?? []))
       .catch(() => {
         /* 載入失敗時靜默處理，側邊欄僅顯示回收站 */
+      })
+  }, [])
+
+  // ─── 掛載時拉取最新用戶信息（刷新權限，解決角色權限變更後 JWT 過時的問題）───
+  useEffect(() => {
+    api
+      .get<{
+        id: number
+        ucode: string
+        username: string
+        realname: string
+        isSuper: boolean
+        permissions: string[]
+      }>('/auth/profile')
+      .then((res) => {
+        if (!res.data) return
+        const freshInfo: UserInfo = {
+          id: res.data.id,
+          ucode: res.data.ucode,
+          username: res.data.username,
+          realname: res.data.realname || '',
+          isSuper: res.data.isSuper,
+          permissions: res.data.permissions || [],
+        }
+        const oldInfo = getUserInfo()
+        // 比較權限是否有變化
+        const oldPerms = JSON.stringify(oldInfo?.permissions ?? [])
+        const newPerms = JSON.stringify(freshInfo.permissions)
+        if (oldPerms !== newPerms) {
+          // 權限有變化 → 更新 localStorage + 狀態
+          setUserInfo(freshInfo)
+          setUserInfoState(freshInfo)
+        }
+      })
+      .catch(() => {
+        // 靜默處理，使用 localStorage 中的緩存
       })
   }, [])
 
@@ -328,10 +375,28 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* 主內容區 */}
+      {/* 主內容區 — key 綁定權限變化，確保 RequirePermission 在權限更新後重新渲染 */}
       <main className="flex-1 overflow-auto">
-        <Outlet />
+        <Outlet key={JSON.stringify(userInfo?.permissions ?? [])} />
       </main>
+
+      {/* ─── 權限拒絕 toast ─── */}
+      {permToast && (
+        <div className="fixed top-4 right-4 z-[100] flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg shadow-lg animate-in fade-in slide-in-from-top-2">
+          <span className="text-lg shrink-0">🚫</span>
+          <div>
+            <p className="font-semibold text-sm">{permToast}</p>
+            <p className="text-xs text-red-500 mt-0.5">当前角色无此功能的访问权限</p>
+          </div>
+          <button
+            onClick={() => setPermToast(null)}
+            className="ml-2 text-red-400 hover:text-red-600 text-lg leading-none shrink-0"
+            aria-label="關閉"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
     </FeatureFlagProvider>
   )

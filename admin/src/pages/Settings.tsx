@@ -28,7 +28,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 30, max: 39, title: '安全配置', icon: '🛡️', desc: 'API 安全、防護等設置' },
   { min: 40, max: 49, title: 'WebAPI', icon: '</>', desc: 'API 接口與跨域配置' },
   { min: 50, max: 59, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
-  { min: 60, max: 69, title: '搜索引擎推送', icon: '🔍', desc: '百度/神馬等搜索引擎收錄推送' },
+  { min: 60, max: 69, title: '搜索引擎驗證', icon: '🔍', desc: 'Google/Bing 搜索引擎站點驗證' },
   { min: 70, max: 79, title: 'S3 存儲配置', icon: '💾', desc: 'R2/S3 兼容存儲（默認鎖定，點擊解鎖後可修改）' },
   { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
 ]

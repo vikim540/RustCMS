@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
-/** 站點信息數據結構 */
+/** 站點信息數據結構（香港本地化：移除 icp 內地備案、theme 模板） */
 interface SiteInfo {
   name: string
   title: string
@@ -11,10 +11,8 @@ interface SiteInfo {
   keywords: string
   description: string
   logo: string
-  icp: string
   copyright: string
   statistical: string
-  theme: string
 }
 
 /** 空表單初始值 */
@@ -26,10 +24,8 @@ const EMPTY_FORM: SiteInfo = {
   keywords: '',
   description: '',
   logo: '',
-  icp: '',
   copyright: '',
   statistical: '',
-  theme: 'default',
 }
 
 export default function SiteInfoPage() {
@@ -162,28 +158,16 @@ export default function SiteInfoPage() {
           </div>
         </div>
 
-        {/* 域名 + 主題 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1.5">域名</label>
-            <input
-              type="text"
-              value={form.domain}
-              onChange={(e) => updateField('domain', e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="如：example.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">主題模板</label>
-            <input
-              type="text"
-              value={form.theme}
-              onChange={(e) => updateField('theme', e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="主題標識"
-            />
-          </div>
+        {/* 域名 */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5">域名</label>
+          <input
+            type="text"
+            value={form.domain}
+            onChange={(e) => updateField('domain', e.target.value)}
+            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="如：cms.cmermedical.com.hk"
+          />
         </div>
 
         {/* LOGO */}
@@ -229,28 +213,16 @@ export default function SiteInfoPage() {
           />
         </div>
 
-        {/* ICP + 版權 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1.5">ICP 備案號</label>
-            <input
-              type="text"
-              value={form.icp}
-              onChange={(e) => updateField('icp', e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="如：京ICP備12345678號"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">版權信息</label>
-            <input
-              type="text"
-              value={form.copyright}
-              onChange={(e) => updateField('copyright', e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="版權聲明"
-            />
-          </div>
+        {/* 版權信息 */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5">版權信息</label>
+          <input
+            type="text"
+            value={form.copyright}
+            onChange={(e) => updateField('copyright', e.target.value)}
+            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="如：© 2026 CMER Medical Center. All rights reserved."
+          />
         </div>
 
         {/* 統計代碼 */}
