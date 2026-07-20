@@ -52,7 +52,7 @@ export interface Env {
   SITE_REGISTRY: string;             // 多站點註冊表 JSON（site_id → {binding, name, domain}）
   CF_ACCOUNT_ID: string;             // Cloudflare Account ID（D1 REST API 創建動態站點用）
   CF_API_TOKEN: string;              // Cloudflare API Token（Secrets Store 綁定，D1 REST API 用）
-  PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string }>;
+  PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string; siteId?: string }>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
   PUBLIC_API_LIMIT: RateLimit;
@@ -338,7 +338,7 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body);
+  return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body, currentSiteId(c));
 });
 
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
@@ -498,7 +498,7 @@ app.post('/api/v1/admin/contents', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  const result = await contentService.handleCreateContent(siteDB(c), body);
+  const result = await contentService.handleCreateContent(siteDB(c), body, currentSiteId(c));
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
   return result;
@@ -561,7 +561,7 @@ app.post('/api/v1/admin/sorts', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return sortService.handleCreateSort(siteDB(c), body);
+  return sortService.handleCreateSort(siteDB(c), body, currentSiteId(c));
 });
 
 // ⚠️ batch-sorting 必須在 :id 路由之前註冊（Hono 路由順序約束）
@@ -614,10 +614,10 @@ app.get('/api/v1/admin/stats', async (c) => {
   const today = todayStr();
 
   const [contentTotal, sortTotal, visitsTotal, todayNew] = await Promise.all([
-    db.prepare("SELECT COUNT(*) as n FROM ay_content WHERE acode = 'cn' AND status >= '0'").first<{ n: number }>(),
-    db.prepare("SELECT COUNT(*) as n FROM ay_content_sort WHERE acode = 'cn'").first<{ n: number }>(),
-    db.prepare("SELECT COALESCE(SUM(visits), 0) as n FROM ay_content WHERE acode = 'cn' AND status = '1'").first<{ n: number }>(),
-    db.prepare("SELECT COUNT(*) as n FROM ay_content WHERE acode = 'cn' AND status >= '0' AND date LIKE ?").bind(`${today}%`).first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) as n FROM ay_content WHERE status >= '0'").first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) as n FROM ay_content_sort").first<{ n: number }>(),
+    db.prepare("SELECT COALESCE(SUM(visits), 0) as n FROM ay_content WHERE status = '1'").first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) as n FROM ay_content WHERE status >= '0' AND date LIKE ?").bind(`${today}%`).first<{ n: number }>(),
   ]);
 
   return okData({
@@ -776,7 +776,7 @@ app.post('/api/v1/admin/links', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateLink(siteDB(c), body);
+  return extraService.handleCreateLink(siteDB(c), body, currentSiteId(c));
 });
 
 app.put('/api/v1/admin/links/:id', async (c) => {
@@ -806,7 +806,7 @@ app.post('/api/v1/admin/slides', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateSlide(siteDB(c), body);
+  return extraService.handleCreateSlide(siteDB(c), body, currentSiteId(c));
 });
 
 // ⚠️ batch-sorting 路由必須在 :id 路由之前，否則 "batch-sorting" 會被當作 :id 匹配
@@ -845,7 +845,7 @@ app.post('/api/v1/admin/tags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateTag(siteDB(c), body);
+  return extraService.handleCreateTag(siteDB(c), body, currentSiteId(c));
 });
 
 app.put('/api/v1/admin/tags/:id', async (c) => {
@@ -1223,7 +1223,7 @@ app.post('/api/v1/admin/scheduler/schedule', async (c) => {
   const body = await c.req.json();
   const id = Number(body.id) || 0;
   const publishDate = body.publishDate || '';
-  return schedulerService.handleScheduleArticle(siteDB(c), c.env.PUBLISH_QUEUE, id, publishDate);
+  return schedulerService.handleScheduleArticle(siteDB(c), c.env.PUBLISH_QUEUE, id, publishDate, currentSiteId(c));
 });
 
 // ===== Vectorize 索引管理 =====
@@ -1348,10 +1348,16 @@ app.onError((e, c) => {
 // ===== Queues 消費者 (定時發布) =====
 export default {
   fetch: app.fetch,
-  async queue(batch: MessageBatch<{ articleId: number; action: string; scheduledAt: string }>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<{ articleId: number; action: string; scheduledAt: string; siteId?: string }>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {
-        await schedulerService.handleQueuePublish(env.DB, msg.body);
+        // 多站點：根據 siteId 路由到正確的數據庫
+        const siteId = msg.body.siteId || 'endoscopy';
+        const registry = parseSiteRegistry(env.SITE_REGISTRY ?? '{}');
+        const entry = registry[siteId];
+        const envBindings = env as unknown as Record<string, D1Database>;
+        const db = (entry && entry.binding && envBindings[entry.binding]) || env.DB;
+        await schedulerService.handleQueuePublish(db, msg.body);
         msg.ack();
       } catch (e) {
         console.error('定時發布失敗:', e);
@@ -1360,6 +1366,18 @@ export default {
     }
   },
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE));
+    // 多站點：遍歷所有已註冊站點數據庫
+    const sites = listRegisteredSites(env.SITE_REGISTRY ?? '{}');
+    for (const site of sites) {
+      const envBindings = env as unknown as Record<string, D1Database>;
+      const db = envBindings[site.binding];
+      if (db) {
+        ctx.waitUntil(schedulerService.handleScheduledPublish(db, env.PUBLISH_QUEUE, site.siteId));
+      }
+    }
+    // 兜底：如果沒有註冊站點，至少處理主庫
+    if (sites.length === 0) {
+      ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE, 'endoscopy'));
+    }
   },
 } satisfies ExportedHandler<Env>;

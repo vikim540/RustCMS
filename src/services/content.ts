@@ -9,7 +9,7 @@ import { getDescendantScodes } from './sort';
 import { handleSaveContentExt } from './model';
 import { nowStr } from '../utils/datetime';
 
-/** 公開內容列表 API */
+/** 公開內容列表 API（僅返回摘要字段，排除 content 正文，減小響應體積） */
 export async function handleListContents(
   db: D1Database,
   params: URLSearchParams,
@@ -21,8 +21,11 @@ export async function handleListContents(
   const isrecommend = params.get('isrecommend');
   const order = params.get('order') || 'date';
 
-  const conditions: string[] = ["c.acode = ?", "c.status = '1'", "c.scode != ''"];
-  const binds: (string | number)[] = ['cn'];
+  // 摘要字段（排除 content 正文、enclosure 附件等大字段）
+  const summaryFields = 'c.id, c.scode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.gtype, c.gid, c.urlname, c.visits, c.likes, c.oppose, c.create_time, c.update_time';
+
+  const conditions: string[] = ["c.status = '1'", "c.scode != ''"];
+  const binds: (string | number)[] = [];
 
   // 欄目篩選 (含子孫欄目)
   if (scode) {
@@ -62,8 +65,8 @@ export async function handleListContents(
   const whereClause = conditions.join(' AND ');
   const off = offset(pagination);
 
-  // 查詢列表
-  const listSql = `SELECT c.* FROM ay_content c WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
+  // 查詢列表（摘要字段，排除 content 正文）
+  const listSql = `SELECT ${summaryFields} FROM ay_content c WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
   // 查詢總數
@@ -81,7 +84,7 @@ export async function handleContentDetail(
   track: boolean,
 ): Promise<Response> {
   const stmt = db.prepare(
-    "SELECT * FROM ay_content WHERE id = ? AND acode = 'cn' AND status = '1'",
+    "SELECT * FROM ay_content WHERE id = ? AND status = '1'",
   ).bind(id);
   const content = await stmt.first<Record<string, unknown> & { visits?: number }>();
 
@@ -95,11 +98,11 @@ export async function handleContentDetail(
 
   // 查詢上一篇/下一篇
   const prev = await db.prepare(
-    "SELECT id, title, filename, date FROM ay_content WHERE id < ? AND acode = 'cn' AND status = '1' ORDER BY id DESC LIMIT 1",
+    "SELECT id, title, filename, date FROM ay_content WHERE id < ? AND status = '1' ORDER BY id DESC LIMIT 1",
   ).bind(id).first();
 
   const next = await db.prepare(
-    "SELECT id, title, filename, date FROM ay_content WHERE id > ? AND acode = 'cn' AND status = '1' ORDER BY id ASC LIMIT 1",
+    "SELECT id, title, filename, date FROM ay_content WHERE id > ? AND status = '1' ORDER BY id ASC LIMIT 1",
   ).bind(id).first();
 
   return okData({ content, prev, next }, '成功');
@@ -119,8 +122,8 @@ export async function handleAdminListContents(
   const keyword = params.get('keyword') || '';
   const status = params.get('status') || '1';
 
-  const conditions: string[] = ['acode = ?', "scode != ''"];
-  const binds: (string | number)[] = ['cn'];
+  const conditions: string[] = ["scode != ''"];
+  const binds: (string | number)[] = [];
 
   // 狀態篩選
   if (status === 'all') {
@@ -166,6 +169,7 @@ export async function handleAdminListContents(
 export async function handleCreateContent(
   db: D1Database,
   body: { title?: string; scode?: string; content?: string; date?: string; status?: string; istop?: string; isrecommend?: string; isheadline?: string; sorting?: string; ext_fields?: Record<string, unknown>; [key: string]: unknown },
+  acode: string = 'endoscopy',
 ): Promise<Response> {
   const title = body.title;
   if (!title) return err('缺少 title 參數', 1001);
@@ -177,7 +181,7 @@ export async function handleCreateContent(
   const result = await db.prepare(
     "INSERT INTO ay_content (acode, scode, title, content, date, status, istop, isrecommend, isheadline, sorting, visits, likes, oppose, gtype, gid, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, '4', '', ?, ?)",
   ).bind(
-    'cn', scode, title,
+    acode, scode, title,
     body.content || '',
     date,
     body.status || '1',

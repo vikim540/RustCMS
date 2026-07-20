@@ -213,7 +213,7 @@ export async function sendNotifyMail(
 // ============================================================================
 
 async function getSiteInfo(db: D1Database): Promise<{ name: string; logo: string; domain: string }> {
-  const site = await db.prepare('SELECT name, title, logo, domain FROM ay_site WHERE acode = ? LIMIT 1').bind('cn').first<{ name?: string; title?: string; logo?: string; domain?: string }>();
+  const site = await db.prepare('SELECT name, title, logo, domain FROM ay_site LIMIT 1').first<{ name?: string; title?: string; logo?: string; domain?: string }>();
   return { name: site?.title || site?.name || 'CMS', logo: site?.logo || '', domain: site?.domain || '' };
 }
 

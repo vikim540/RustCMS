@@ -167,21 +167,21 @@ export async function handleAdminListLinks(
   const pagination = fromQuery(params);
   const gid = params.get('gid') || '';
 
-  const conditions: string[] = ['acode = ?'];
-  const binds: (string | number)[] = ['cn'];
+  const conditions: string[] = [];
+  const binds: (string | number)[] = [];
 
   if (gid) {
     conditions.push('gid = ?');
     binds.push(gid);
   }
 
-  const whereClause = conditions.join(' AND ');
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const off = offset(pagination);
 
-  const listSql = `SELECT * FROM ay_link WHERE ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
+  const listSql = `SELECT * FROM ay_link ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
-  const countSql = `SELECT COUNT(*) as total FROM ay_link WHERE ${whereClause}`;
+  const countSql = `SELECT COUNT(*) as total FROM ay_link ${whereClause}`;
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
@@ -192,6 +192,7 @@ export async function handleAdminListLinks(
 export async function handleCreateLink(
   db: D1Database,
   body: { gid?: string; name?: string; link?: string; logo?: string; sorting?: number },
+  acode: string = 'endoscopy',
 ): Promise<Response> {
   const name = body.name;
   if (!name) return err('缺少 name 參數', 1001);
@@ -202,7 +203,7 @@ export async function handleCreateLink(
   const result = await db.prepare(
     'INSERT INTO ay_link (acode, gid, name, link, logo, sorting, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   ).bind(
-    'cn',
+    acode,
     body.gid || '1',
     name,
     body.link || '',
@@ -246,8 +247,7 @@ export async function handleUpdateLink(
   binds.push(now);
   binds.push(id);
 
-  const sql = `UPDATE ay_link SET ${sets.join(', ')} WHERE id = ? AND acode = ?`;
-  binds.push('cn');
+  const sql = `UPDATE ay_link SET ${sets.join(', ')} WHERE id = ?`;
   await db.prepare(sql).bind(...binds).run();
 
   return ok('友情連結更新成功');
@@ -255,7 +255,7 @@ export async function handleUpdateLink(
 
 /** 刪除友情連結 */
 export async function handleDeleteLink(db: D1Database, id: number): Promise<Response> {
-  await db.prepare('DELETE FROM ay_link WHERE id = ? AND acode = ?').bind(id, 'cn').run();
+  await db.prepare('DELETE FROM ay_link WHERE id = ?').bind(id).run();
   return ok('友情連結刪除成功');
 }
 
@@ -268,14 +268,14 @@ export async function handleListLinks(
 
   if (gid) {
     const result = await db.prepare(
-      'SELECT * FROM ay_link WHERE acode = ? AND gid = ? ORDER BY sorting ASC, id ASC',
-    ).bind('cn', gid).all();
+      'SELECT * FROM ay_link WHERE gid = ? ORDER BY sorting ASC, id ASC',
+    ).bind(gid).all();
     return okData(result.results, '成功');
   }
 
   const result = await db.prepare(
-    'SELECT * FROM ay_link WHERE acode = ? ORDER BY sorting ASC, id ASC',
-  ).bind('cn').all();
+    'SELECT * FROM ay_link ORDER BY sorting ASC, id ASC',
+  ).all();
   return okData(result.results, '成功');
 }
 
@@ -291,21 +291,21 @@ export async function handleAdminListSlides(
   const pagination = fromQuery(params);
   const gid = params.get('gid') || '';
 
-  const conditions: string[] = ['acode = ?'];
-  const binds: (string | number)[] = ['cn'];
+  const conditions: string[] = [];
+  const binds: (string | number)[] = [];
 
   if (gid) {
     conditions.push('gid = ?');
     binds.push(gid);
   }
 
-  const whereClause = conditions.join(' AND ');
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const off = offset(pagination);
 
-  const listSql = `SELECT * FROM ay_slide WHERE ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
+  const listSql = `SELECT * FROM ay_slide ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
-  const countSql = `SELECT COUNT(*) as total FROM ay_slide WHERE ${whereClause}`;
+  const countSql = `SELECT COUNT(*) as total FROM ay_slide ${whereClause}`;
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
@@ -316,6 +316,7 @@ export async function handleAdminListSlides(
 export async function handleCreateSlide(
   db: D1Database,
   body: { gid?: string; pic?: string; pic_mobile?: string; link?: string; title?: string; subtitle?: string; button_text?: string; sorting?: number },
+  acode: string = 'endoscopy',
 ): Promise<Response> {
   const now = nowStr();
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
@@ -323,7 +324,7 @@ export async function handleCreateSlide(
   const result = await db.prepare(
     'INSERT INTO ay_slide (acode, gid, pic, pic_mobile, link, title, subtitle, button_text, sorting, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   ).bind(
-    'cn',
+    acode,
     body.gid || '1',
     body.pic || '',
     body.pic_mobile || '',
@@ -370,8 +371,7 @@ export async function handleUpdateSlide(
   binds.push(now);
   binds.push(id);
 
-  const sql = `UPDATE ay_slide SET ${sets.join(', ')} WHERE id = ? AND acode = ?`;
-  binds.push('cn');
+  const sql = `UPDATE ay_slide SET ${sets.join(', ')} WHERE id = ?`;
   await db.prepare(sql).bind(...binds).run();
 
   return ok('幻燈片更新成功');
@@ -383,7 +383,7 @@ export async function handleBatchUpdateSlideSorting(
   items: { id: number; sorting: number }[],
 ): Promise<Response> {
   const stmts = items.map((item) =>
-    db.prepare('UPDATE ay_slide SET sorting = ? WHERE id = ? AND acode = ?').bind(item.sorting, item.id, 'cn'),
+    db.prepare('UPDATE ay_slide SET sorting = ? WHERE id = ?').bind(item.sorting, item.id),
   );
   await db.batch(stmts);
   return ok('排序更新成功');
@@ -391,7 +391,7 @@ export async function handleBatchUpdateSlideSorting(
 
 /** 刪除幻燈片 */
 export async function handleDeleteSlide(db: D1Database, id: number): Promise<Response> {
-  await db.prepare('DELETE FROM ay_slide WHERE id = ? AND acode = ?').bind(id, 'cn').run();
+  await db.prepare('DELETE FROM ay_slide WHERE id = ?').bind(id).run();
   return ok('幻燈片刪除成功');
 }
 
@@ -404,14 +404,14 @@ export async function handleListSlides(
 
   if (gid) {
     const result = await db.prepare(
-      'SELECT * FROM ay_slide WHERE acode = ? AND gid = ? ORDER BY sorting ASC, id ASC',
-    ).bind('cn', gid).all();
+      'SELECT * FROM ay_slide WHERE gid = ? ORDER BY sorting ASC, id ASC',
+    ).bind(gid).all();
     return okData(result.results, '成功');
   }
 
   const result = await db.prepare(
-    'SELECT * FROM ay_slide WHERE acode = ? ORDER BY sorting ASC, id ASC',
-  ).bind('cn').all();
+    'SELECT * FROM ay_slide ORDER BY sorting ASC, id ASC',
+  ).all();
   return okData(result.results, '成功');
 }
 
@@ -427,21 +427,21 @@ export async function handleAdminListTags(
   const pagination = fromQuery(params);
   const keyword = params.get('keyword') || '';
 
-  const conditions: string[] = ['acode = ?'];
-  const binds: (string | number)[] = ['cn'];
+  const conditions: string[] = [];
+  const binds: (string | number)[] = [];
 
   if (keyword) {
     conditions.push('name LIKE ?');
     binds.push(`%${keyword}%`);
   }
 
-  const whereClause = conditions.join(' AND ');
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const off = offset(pagination);
 
-  const listSql = `SELECT * FROM ay_tags WHERE ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
+  const listSql = `SELECT * FROM ay_tags ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
-  const countSql = `SELECT COUNT(*) as total FROM ay_tags WHERE ${whereClause}`;
+  const countSql = `SELECT COUNT(*) as total FROM ay_tags ${whereClause}`;
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
@@ -452,6 +452,7 @@ export async function handleAdminListTags(
 export async function handleCreateTag(
   db: D1Database,
   body: { name?: string; link?: string; sorting?: number },
+  acode: string = 'endoscopy',
 ): Promise<Response> {
   const name = body.name;
   if (!name) return err('缺少 name 參數', 1001);
@@ -461,7 +462,7 @@ export async function handleCreateTag(
 
   const result = await db.prepare(
     'INSERT INTO ay_tags (acode, name, link, sorting, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?)',
-  ).bind('cn', name, body.link || '', sorting, now, now).run();
+  ).bind(acode, name, body.link || '', sorting, now, now).run();
 
   if (result.meta.changes > 0) {
     return ok('標籤創建成功');
@@ -497,8 +498,7 @@ export async function handleUpdateTag(
   binds.push(now);
   binds.push(id);
 
-  const sql = `UPDATE ay_tags SET ${sets.join(', ')} WHERE id = ? AND acode = ?`;
-  binds.push('cn');
+  const sql = `UPDATE ay_tags SET ${sets.join(', ')} WHERE id = ?`;
   await db.prepare(sql).bind(...binds).run();
 
   return ok('標籤更新成功');
@@ -506,15 +506,15 @@ export async function handleUpdateTag(
 
 /** 刪除標籤 */
 export async function handleDeleteTag(db: D1Database, id: number): Promise<Response> {
-  await db.prepare('DELETE FROM ay_tags WHERE id = ? AND acode = ?').bind(id, 'cn').run();
+  await db.prepare('DELETE FROM ay_tags WHERE id = ?').bind(id).run();
   return ok('標籤刪除成功');
 }
 
 /** 公開標籤列表 */
 export async function handleListTags(db: D1Database): Promise<Response> {
   const result = await db.prepare(
-    'SELECT * FROM ay_tags WHERE acode = ? ORDER BY sorting ASC, id ASC',
-  ).bind('cn').all();
+    'SELECT * FROM ay_tags ORDER BY sorting ASC, id ASC',
+  ).all();
   return okData(result.results, '成功');
 }
 
@@ -531,21 +531,21 @@ export async function handleAdminListMessages(
   const pagination = fromQuery(params);
   const status = params.get('status') || '';
 
-  const conditions: string[] = ['acode = ?'];
-  const binds: (string | number)[] = ['cn'];
+  const conditions: string[] = [];
+  const binds: (string | number)[] = [];
 
   if (status) {
     conditions.push('status = ?');
     binds.push(status);
   }
 
-  const whereClause = conditions.join(' AND ');
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const off = offset(pagination);
 
-  const listSql = `SELECT * FROM ay_message WHERE ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`;
+  const listSql = `SELECT * FROM ay_message ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
-  const countSql = `SELECT COUNT(*) as total FROM ay_message WHERE ${whereClause}`;
+  const countSql = `SELECT COUNT(*) as total FROM ay_message ${whereClause}`;
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
@@ -555,8 +555,8 @@ export async function handleAdminListMessages(
 /** 後台留言詳情 */
 export async function handleAdminGetMessage(db: D1Database, id: number): Promise<Response> {
   const row = await db.prepare(
-    'SELECT * FROM ay_message WHERE id = ? AND acode = ?',
-  ).bind(id, 'cn').first();
+    'SELECT * FROM ay_message WHERE id = ?',
+  ).bind(id).first();
   if (!row) return notFound('留言不存在');
   return okData(row, '成功');
 }
@@ -589,8 +589,7 @@ export async function handleUpdateMessage(
   binds.push(now);
   binds.push(id);
 
-  const sql = `UPDATE ay_message SET ${sets.join(', ')} WHERE id = ? AND acode = ?`;
-  binds.push('cn');
+  const sql = `UPDATE ay_message SET ${sets.join(', ')} WHERE id = ?`;
   await db.prepare(sql).bind(...binds).run();
 
   return ok('留言更新成功');
@@ -598,7 +597,7 @@ export async function handleUpdateMessage(
 
 /** 刪除留言 */
 export async function handleDeleteMessage(db: D1Database, id: number): Promise<Response> {
-  await db.prepare('DELETE FROM ay_message WHERE id = ? AND acode = ?').bind(id, 'cn').run();
+  await db.prepare('DELETE FROM ay_message WHERE id = ?').bind(id).run();
   return ok('留言刪除成功');
 }
 
@@ -611,6 +610,7 @@ export async function handleDeleteMessage(db: D1Database, id: number): Promise<R
  * @param userAgent 訪問者 User-Agent (用於解析 os/bs)
  * @param sourceUrl 來源頁面 URL (Referer)
  * @param body { contacts, mobile, content }
+ * @param acode 站點區域代碼 (默認 'endoscopy')
  */
 export async function handleSubmitMessage(
   db: D1Database,
@@ -621,6 +621,7 @@ export async function handleSubmitMessage(
   userAgent: string,
   sourceUrl: string,
   body: { contacts?: string; mobile?: string; content?: string },
+  acode: string = 'endoscopy',
 ): Promise<Response> {
   const content = body.content;
   if (!content) return err('缺少 content 參數', 1001);
@@ -645,7 +646,7 @@ export async function handleSubmitMessage(
   const result = await db.prepare(
     'INSERT INTO ay_message (acode, contacts, mobile, content, user_ip, user_os, user_bs, recontent, status, uid, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
   ).bind(
-    'cn',
+    acode,
     body.contacts || '',
     body.mobile || '',
     content,
@@ -684,7 +685,7 @@ export async function handleSubmitMessage(
 }
 
 // ============================================================================
-// 模塊 7: 站點信息 (ay_site) - 單記錄 (acode='cn')
+// 模塊 7: 站點信息 (ay_site) - 單記錄
 // ============================================================================
 
 /** 站點字段白名單（香港本地化：移除 icp 內地備案、theme 模板） */
@@ -694,15 +695,15 @@ const SITE_FIELDS = [
 ];
 
 /** 獲取或創建站點信息 (FirstOrCreate) */
-async function getOrCreateSite(db: D1Database): Promise<Record<string, unknown>> {
-  const existing = await db.prepare('SELECT * FROM ay_site WHERE acode = ? LIMIT 1').bind('cn').first();
+async function getOrCreateSite(db: D1Database, acode: string = 'endoscopy'): Promise<Record<string, unknown>> {
+  const existing = await db.prepare('SELECT * FROM ay_site LIMIT 1').first();
   if (existing) return existing;
 
   // 不存在則創建空記錄
   await db.prepare(
-    "INSERT INTO ay_site (acode, name, title, subtitle, domain, keywords, description, logo, copyright, statistical, lang) VALUES ('cn', '', '', '', '', '', '', '', '', '', 'zh-hk')",
-  ).run();
-  return (await db.prepare('SELECT * FROM ay_site WHERE acode = ? LIMIT 1').bind('cn').first())!;
+    'INSERT INTO ay_site (acode, name, title, subtitle, domain, keywords, description, logo, copyright, statistical, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(acode, '', '', '', '', '', '', '', '', '', 'zh-hk').run();
+  return (await db.prepare('SELECT * FROM ay_site LIMIT 1').first())!;
 }
 
 /** 後台獲取站點信息 */
@@ -734,15 +735,14 @@ export async function handleAdminUpdateSite(
     return err('沒有需要更新的字段', 1001);
   }
 
-  binds.push('cn');
-  const sql = `UPDATE ay_site SET ${sets.join(', ')} WHERE acode = ?`;
+  const sql = `UPDATE ay_site SET ${sets.join(', ')}`;
   await db.prepare(sql).bind(...binds).run();
 
   return ok('站點信息更新成功');
 }
 
 // ============================================================================
-// 模塊 8: 公司信息 (ay_company) - 單記錄 (acode='cn')
+// 模塊 8: 公司信息 (ay_company) - 單記錄
 // ============================================================================
 
 /** 公司字段白名單（香港本地化：移除 postcode 郵編、qq、icp，新增 whatsapp） */
@@ -752,15 +752,15 @@ const COMPANY_FIELDS = [
 ];
 
 /** 獲取或創建公司信息 (FirstOrCreate) */
-async function getOrCreateCompany(db: D1Database): Promise<Record<string, unknown>> {
-  const existing = await db.prepare('SELECT * FROM ay_company WHERE acode = ? LIMIT 1').bind('cn').first();
+async function getOrCreateCompany(db: D1Database, acode: string = 'endoscopy'): Promise<Record<string, unknown>> {
+  const existing = await db.prepare('SELECT * FROM ay_company LIMIT 1').first();
   if (existing) return existing;
 
   // 不存在則創建空記錄
   await db.prepare(
-    "INSERT INTO ay_company (acode, name, address, contact, mobile, phone, fax, email, weixin, whatsapp, blicense, other, legal, business) VALUES ('cn', '', '', '', '', '', '', '', '', '', '', '', '', '')",
-  ).run();
-  return (await db.prepare('SELECT * FROM ay_company WHERE acode = ? LIMIT 1').bind('cn').first())!;
+    'INSERT INTO ay_company (acode, name, address, contact, mobile, phone, fax, email, weixin, whatsapp, blicense, other, legal, business) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(acode, '', '', '', '', '', '', '', '', '', '', '', '', '').run();
+  return (await db.prepare('SELECT * FROM ay_company LIMIT 1').first())!;
 }
 
 /** 後台獲取公司信息 */
@@ -772,8 +772,7 @@ export async function handleAdminGetCompany(db: D1Database): Promise<Response> {
 /** 公開公司信息（過濾敏感字段，僅返回前台需要的聯繫信息） */
 export async function getPublicCompany(db: D1Database): Promise<Record<string, unknown>> {
   const row = await db
-    .prepare('SELECT name, address, contact, mobile, phone, fax, email, weixin, whatsapp, other, business FROM ay_company WHERE acode = ? LIMIT 1')
-    .bind('cn')
+    .prepare('SELECT name, address, contact, mobile, phone, fax, email, weixin, whatsapp, other, business FROM ay_company LIMIT 1')
     .first();
   return row ?? {};
 }
@@ -801,8 +800,7 @@ export async function handleAdminUpdateCompany(
     return err('沒有需要更新的字段', 1001);
   }
 
-  binds.push('cn');
-  const sql = `UPDATE ay_company SET ${sets.join(', ')} WHERE acode = ?`;
+  const sql = `UPDATE ay_company SET ${sets.join(', ')}`;
   await db.prepare(sql).bind(...binds).run();
 
   return ok('公司信息更新成功');

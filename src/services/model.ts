@@ -495,8 +495,8 @@ export async function handleListTrashedContents(
   const scode = params.get('scode') || '';
   const keyword = params.get('keyword') || '';
 
-  const conditions: string[] = ["status = '-1'", 'acode = ?'];
-  const binds: (string | number)[] = ['cn'];
+  const conditions: string[] = ["status = '-1'"];
+  const binds: (string | number)[] = [];
 
   if (scode) {
     conditions.push('scode = ?');

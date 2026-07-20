@@ -51,7 +51,7 @@ export async function clearConfigCache(kv: KVNamespace): Promise<void> {
 
 /** 獲取站點信息 */
 export async function getSiteInfo(db: D1Database): Promise<Record<string, unknown> | null> {
-  const stmt = db.prepare('SELECT * FROM ay_site WHERE acode = ? LIMIT 1').bind('cn');
+  const stmt = db.prepare('SELECT * FROM ay_site LIMIT 1');
   return await stmt.first();
 }
 

@@ -23,7 +23,7 @@
  *   - status (text)     狀態: '1'=已發布, '0'=草稿, '-1'=回收站
  *   - date (text)       日期時間, 格式 'YYYY-MM-DD HH:mm:ss'
  *   - scode (text)      欄目編碼
- *   - acode (text)      區域編碼, 固定 'cn'
+ *   - acode (text)      站點標識（站點 ID，如 endoscopy/smile/vision）
  */
 import type { D1Database, Queue } from '@cloudflare/workers-types';
 import { okData, ok, err } from '../utils/response';
@@ -37,6 +37,8 @@ export interface PublishMessage {
   action: 'publish';
   /** 預定發布時間 (YYYY-MM-DD HH:mm:ss) */
   scheduledAt: string;
+  /** 站點 ID（多站點架構，Queue 消費者用於路由到正確數據庫） */
+  siteId?: string;
 }
 
 /** Queue 最大延遲秒數 (24 小時, Cloudflare Queues 限制) */
@@ -110,13 +112,14 @@ async function logEvent(db: D1Database, level: string, event: string): Promise<v
 export async function handleScheduledPublish(
   db: D1Database,
   queue: Queue<PublishMessage> | null,
+  siteId: string = 'endoscopy',
 ): Promise<void> {
   // 1. 掃描未來 24 小時內待發布的草稿文章, 投遞延遲消息到 Queue
   let upcoming: Array<{ id: number; date: string }> = [];
   try {
     const result = await db.prepare(
       `SELECT id, date FROM ay_content
-       WHERE status = '0' AND acode = 'cn'
+       WHERE status = '0'
        AND date > datetime('now', '+8 hours')
        AND date <= datetime('now', '+8 hours', '+24 hours')`,
     ).all<{ id: number; date: string }>();
@@ -136,7 +139,7 @@ export async function handleScheduledPublish(
       if (queue) {
         try {
           await queue.send(
-            { articleId: article.id, action: 'publish', scheduledAt: article.date },
+            { articleId: article.id, action: 'publish', scheduledAt: article.date, siteId },
             { delaySeconds: Math.floor(delaySeconds) },
           );
         } catch (e) {
@@ -152,7 +155,7 @@ export async function handleScheduledPublish(
   try {
     const result = await db.prepare(
       `UPDATE ay_content SET status = '1'
-       WHERE status = '0' AND acode = 'cn'
+       WHERE status = '0'
        AND date <= datetime('now', '+8 hours') AND date != ''`,
     ).run();
 
@@ -224,6 +227,7 @@ export async function handleScheduleArticle(
   queue: Queue<PublishMessage> | null,
   id: number,
   publishDate: string,
+  siteId: string = 'endoscopy',
 ): Promise<Response> {
   if (!id || id <= 0) {
     return err('文章 ID 無效', 1001);
@@ -236,7 +240,7 @@ export async function handleScheduleArticle(
 
   // 2. 檢查文章是否存在
   const article = await db.prepare(
-    "SELECT id, title, status FROM ay_content WHERE id = ? AND acode = 'cn'",
+    "SELECT id, title, status FROM ay_content WHERE id = ?",
   )
     .bind(id)
     .first<{ id: number; title: string; status: string }>();
@@ -266,7 +270,7 @@ export async function handleScheduleArticle(
     if (delaySeconds >= 0 && delaySeconds <= MAX_QUEUE_DELAY_SECONDS) {
       try {
         await queue.send(
-          { articleId: id, action: 'publish', scheduledAt: publishDate },
+          { articleId: id, action: 'publish', scheduledAt: publishDate, siteId },
           { delaySeconds: Math.floor(delaySeconds) },
         );
         queued = true;
@@ -308,7 +312,7 @@ export async function handleListScheduled(
   try {
     const result = await db.prepare(
       `SELECT id, title, date, scode FROM ay_content
-       WHERE status = '0' AND acode = 'cn'
+       WHERE status = '0'
        AND date > datetime('now', '+8 hours')
        ORDER BY date ASC`,
     ).all<{ id: number; title: string; date: string; scode: string }>();
