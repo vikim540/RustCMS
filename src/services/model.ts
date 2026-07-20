@@ -190,13 +190,15 @@ export async function handleDeleteModel(db: D1Database, id: number): Promise<Res
 // 注意: 無 acode 字段, 無時間字段; 有 sorting 字段
 // ============================================================================
 
-/** 後台擴展字段列表 (分頁, 支持 mcode 篩選, ORDER BY sorting ASC, id ASC) */
+/** 後台擴展字段列表 (分頁, 支持 mcode 篩選, ORDER BY sorting ASC, id ASC)
+ *  默認僅顯示啟用字段（status='1'），傳 include_disabled=1 可顯示全部 */
 export async function handleListExtFields(
   db: D1Database,
   params: URLSearchParams,
 ): Promise<Response> {
   const pagination = fromQuery(params);
   const mcode = params.get('mcode') || '';
+  const includeDisabled = params.get('include_disabled') === '1';
 
   const conditions: string[] = [];
   const binds: (string | number)[] = [];
@@ -204,6 +206,9 @@ export async function handleListExtFields(
   if (mcode) {
     conditions.push('mcode = ?');
     binds.push(mcode);
+  }
+  if (!includeDisabled) {
+    conditions.push("status = '1'");
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -310,10 +315,55 @@ export async function handleUpdateExtField(
   return ok('擴展字段更新成功');
 }
 
-/** 刪除擴展字段 (軟刪除: status='0'; SQLite 不便 DROP COLUMN, 保留物理列) */
+/** 刪除擴展字段（物理刪除定義 + 嘗試 DROP COLUMN + 清理數據）
+ *  注意：SQLite 3.35.0+ 支持 ALTER TABLE DROP COLUMN，D1 基於較新版本應支持
+ *  若 DROP COLUMN 失敗（舊版本），則將列值設為 NULL 並物理刪除字段定義 */
 export async function handleDeleteExtField(db: D1Database, id: number): Promise<Response> {
-  await db.prepare("UPDATE ay_extfield SET status = '0' WHERE id = ?").bind(id).run();
-  return ok('擴展字段已禁用');
+  // 1. 查找字段定義
+  const field = await db.prepare('SELECT field FROM ay_extfield WHERE id = ?').bind(id).first<{ field: string }>();
+  if (!field) return notFound('擴展字段不存在');
+
+  const columnName = field.field;
+
+  // 2. 安全校驗列名（防止 SQL 注入，列名無法參數化）
+  if (!isValidExtColumn(columnName)) {
+    return err('字段名不合法，無法刪除', 1001);
+  }
+
+  // 3. 嘗試 DROP COLUMN（SQLite 3.35.0+）
+  try {
+    await db.prepare(`ALTER TABLE ay_content_ext DROP COLUMN ${columnName}`).run();
+  } catch {
+    // DROP COLUMN 失敗 → 清理該列的數據為 NULL（保留物理列但清空數據）
+    try {
+      await db.prepare(`UPDATE ay_content_ext SET ${columnName} = NULL`).run();
+    } catch {
+      /* 忽略，可能列不存在 */
+    }
+  }
+
+  // 4. 物理刪除字段定義
+  await db.prepare('DELETE FROM ay_extfield WHERE id = ?').bind(id).run();
+
+  return ok('擴展字段已徹底刪除');
+}
+
+/** 批量更新擴展字段排序 */
+export async function handleBatchUpdateExtFieldSorting(
+  db: D1Database,
+  items: Array<{ id: number; sorting: number }>,
+): Promise<Response> {
+  if (!Array.isArray(items) || items.length === 0) {
+    return err('沒有需要更新的排序', 1001);
+  }
+
+  const stmt = db.prepare('UPDATE ay_extfield SET sorting = ? WHERE id = ?');
+  const batchPromises = items.map((item) =>
+    stmt.bind(Math.max(0, Math.floor(item.sorting)), item.id).run(),
+  );
+  await Promise.all(batchPromises);
+
+  return ok(`批量更新 ${items.length} 項排序成功`);
 }
 
 // ============================================================================

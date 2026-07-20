@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.6.1',
+    date: '2026-07-20 18:00:00',
+    icon: '🗂️',
+    latest: true,
+    changes: '🗂️ 欄目管理批量操作 — 批量排序 + 批量刪除 + 排序默認值優化\n\n📝 批量排序（dirty tracking 模式）\n• 排序列改為可編輯的 SortInput 組件（統一組件 useBatchSorting + BatchSortSaveBar）\n• 修改後標記 dirty（amber 高亮），底部顯示「保存排序」按鈕統一提交\n• 調用 PUT /admin/sorts/batch-sorting 批量更新\n• 成功/失敗均自動刷新欄目樹\n\n🗑️ 批量刪除\n• 表格頭部全選 checkbox + 每行 checkbox\n• 選中後顯示「批量刪除（N）」按鈕\n• 確認對話框警告「刪除欄目將同時刪除所有子欄目和關聯內容」\n• 逐條調用 DELETE /admin/sorts/:id（後端級聯刪除）\n• 顯示刪除進度 X/Y，失敗項計數\n\n🔢 排序默認值優化\n• 新建欄目 sorting 從硬編碼 255 改為 max(sorting)+1（同級 pcode 範圍）\n• 無同級欄目時默認為 1\n• 後端 handleCreateSort 查詢 MAX(sorting) 計算新值',
+  },
+  {
     version: 'v1.6.0',
     date: '2026-07-20 17:29:20',
     icon: '🌐',
-    latest: true,
+    latest: false,
     changes: '🌐 多站點架構 — 亞太三站點獨立數據庫 + 用戶站點權限分配\n\n🏗️ 架構設計\n• 主庫 endoscopy-cms：全局用戶/角色/菜單/站點註冊表\n• 站點庫 smile-cms / vision-cms：各站點獨立內容/配置\n• SITE_REGISTRY 環境變量映射 siteId → D1 binding\n• X-Site-Id header 中間件路由至對應站點數據庫\n• siteDB(c) / primaryDB(c) 雙軌數據庫訪問模式\n\n🗄️ 數據庫（全部 APAC 地區）\n• endoscopy-cms（主站，現有數據）\n• smile-cms（結構 + 初始數據）\n• vision-cms（結構 + 初始數據）\n• 遷移 0006：ay_site_registry + ay_user_site 關聯表\n• 遷移 0007：M308 多站點管理菜單 + R101 權限\n\n👥 用戶站點權限分配\n• 全局用戶 + 站點分配模式（用戶/角色/菜單在主庫）\n• 非超管用戶必須至少分配一個站點（前端驗證 + 後端檢查）\n• 超級管理員自動擁有所有站點權限\n• 用戶編輯對話框新增站點勾選 UI（全選/清空）\n• GET /admin/users/:id/sites + POST /admin/users/:id/sites\n\n🎨 前端多站點體驗\n• 側邊欄頂部站點選擇下拉（替代固定標題）\n• 切換站點自動刷新頁面載入新站點數據\n• Login.tsx 登入後緩存站點列表 + 設置默認站點\n• 多站點管理頁（/sites）：站點列表 + 創建嚮導 + 編輯\n\n🔌 API 端點\n• GET /admin/sites — 列出用戶可訪問的站點\n• GET /admin/sites/current — 當前站點信息\n• POST /admin/sites/create — 一鍵創建新站點（REST API）\n• PUT /admin/sites/:siteId — 更新站點信息\n• GET /admin/users/:id/sites — 用戶已分配站點\n• POST /admin/users/:id/sites — 設置用戶站點分配',
   },
   {
@@ -283,6 +290,18 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片', auth: true },
+  // 欄目管理 + 擴展字段 (v1.6.1+)
+  { method: 'GET', path: '/api/v1/admin/sorts', desc: '欄目樹 (?mcode=)', auth: true },
+  { method: 'POST', path: '/api/v1/admin/sorts', desc: '新增欄目', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/sorts/:id', desc: '更新欄目', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/sorts/:id', desc: '刪除欄目 (級聯刪除子欄目+內容)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/sorts/batch-sorting', desc: '批量更新欄目排序', auth: true },
+  { method: 'GET', path: '/api/v1/admin/extfields', desc: '擴展字段列表 (?include_disabled=1)', auth: true },
+  { method: 'POST', path: '/api/v1/admin/extfields', desc: '新增擴展字段', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/extfields/:id', desc: '更新擴展字段', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/extfields/:id', desc: '徹底刪除擴展字段 (DROP COLUMN)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/extfields/batch-sorting', desc: '批量更新擴展字段排序', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/slides/batch-sorting', desc: '批量更新幻燈片排序', auth: true },
   // 多站點管理 (v1.6.0+)
   { method: 'GET', path: '/api/v1/admin/sites', desc: '列出用戶可訪問的站點', auth: true },
   { method: 'GET', path: '/api/v1/admin/sites/current', desc: '當前站點信息', auth: true },
@@ -662,6 +681,22 @@ export default function Dashboard() {
   }
 }`}</code>
                 </pre>
+                <div className="text-sm text-foreground">
+                  <strong className="font-semibold">多站點路由（X-Site-Id header）：</strong>
+                  <span className="text-muted-foreground ml-1">
+                    所有公開與管理接口均可通過 <code className="px-1 py-0.5 bg-gray-100 rounded text-xs font-mono">X-Site-Id</code> header 指定站點（endoscopy / smile / vision），未攜帶時默認回退到主站（endoscopy）。前端網站調用時務必攜帶此 header 確保數據隔離。
+                  </span>
+                </div>
+                <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
+                  <strong>💡 交付示例：</strong>
+                  前端網站調用 Endoscopy 站點疾病知識欄目列表（分頁）：
+                  <code className="block mt-1.5 text-xs font-mono bg-blue-100 rounded px-2 py-1 text-blue-900">
+                    GET /api/v1/contents?scode=14&amp;page=1&amp;pagesize=20
+                  </code>
+                  <code className="block mt-1 text-xs font-mono bg-blue-100 rounded px-2 py-1 text-blue-900">
+                    Header: X-Site-Id: endoscopy
+                  </code>
+                </div>
               </div>
             </section>
 
@@ -725,7 +760,7 @@ export default function Dashboard() {
                 <span>快速開始</span>
               </h3>
               <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm">
-                <code>{`// 登錄獲取 token
+                <code>{`// 1. 登錄獲取 token
 const res = await fetch('/api/v1/auth/login', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -734,17 +769,70 @@ const res = await fetch('/api/v1/auth/login', {
 const { data } = await res.json()
 localStorage.setItem('cms_token', data.token)
 
-// 調用需認證接口
+// 2. 調用需認證接口
 const resp = await fetch('/api/v1/admin/contents?page=1', {
   headers: { Authorization: \`Bearer \${localStorage.getItem('cms_token')}\` }
 })
 const result = await resp.json()
 console.log(result.data) // 內容列表
 
-// 語義搜索（公開接口，無需認證）
-const search = await fetch('/api/v1/search?q=保養眼睛&topK=10&threshold=0.7')
+// 3. 語義搜索（公開接口，無需認證）
+const search = await fetch('/api/v1/search?q=保養眼睛&topK=10&threshold=0.5')
 const { data: articles } = await search.json()
-console.log(articles) // 相似文章列表`}</code>
+console.log(articles) // 相似文章列表
+
+// 4. 多站點內容調用（核心場景：前端網站調用指定站點數據）
+//    X-Site-Id header 指定站點：endoscopy / smile / vision
+//    未攜帶 X-Site-Id 時默認回退到主站（endoscopy）
+
+// 4a. 獲取 Endoscopy 站點「疾病知識」欄目列表（分頁）
+//     scode=14 為疾病知識欄目，自動包含子欄目內容
+const endoscopyRes = await fetch(
+  '/api/v1/contents?scode=14&page=1&pagesize=20&order=date',
+  { headers: { 'X-Site-Id': 'endoscopy' } }
+)
+const endoscopyData = await endoscopyRes.json()
+console.log(endoscopyData.data)       // 文章列表
+console.log(endoscopyData.meta)       // { page: 1, pagesize: 20, total: 15 }
+
+// 4b. 獲取 Smile 站點全部欄目樹
+const smileRes = await fetch('/api/v1/sorts', {
+  headers: { 'X-Site-Id': 'smile' }
+})
+const { data: smileSorts } = await smileRes.json()
+
+// 4c. 獲取 Vision 站點某篇文章詳情
+const visionRes = await fetch('/api/v1/contents/42', {
+  headers: { 'X-Site-Id': 'vision' }
+})
+const { data: article } = await visionRes.json()
+
+// 4d. 後台管理多站點操作（需 JWT + X-Site-Id）
+const adminRes = await fetch(
+  '/api/v1/admin/contents?mcode=2&page=1',
+  {
+    headers: {
+      Authorization: \`Bearer \${localStorage.getItem('cms_token')}\`,
+      'X-Site-Id': 'smile'  // 管理 Smile 站點數據
+    }
+  }
+)
+
+// 5. 批量排序（欄目/擴展字段/幻燈片通用模式）
+await fetch('/api/v1/admin/sorts/batch-sorting', {
+  method: 'PUT',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: \`Bearer \${localStorage.getItem('cms_token')}\`,
+    'X-Site-Id': 'endoscopy'
+  },
+  body: JSON.stringify({
+    items: [
+      { id: 13, sorting: 1 },
+      { id: 14, sorting: 2 }
+    ]
+  })
+})`}</code>
               </pre>
             </section>
 

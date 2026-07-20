@@ -564,6 +564,15 @@ app.post('/api/v1/admin/sorts', async (c) => {
   return sortService.handleCreateSort(siteDB(c), body);
 });
 
+// ⚠️ batch-sorting 必須在 :id 路由之前註冊（Hono 路由順序約束）
+app.put('/api/v1/admin/sorts/batch-sorting', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  const items = Array.isArray(body?.items) ? body.items : [];
+  return sortService.handleBatchUpdateSortSorting(siteDB(c), items);
+});
+
 app.put('/api/v1/admin/sorts/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
@@ -993,6 +1002,15 @@ app.post('/api/v1/admin/extfields', async (c) => {
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
   return modelService.handleCreateExtField(siteDB(c), body);
+});
+
+// ⚠️ batch-sorting 必須在 :id 路由之前註冊（Hono 路由順序約束）
+app.put('/api/v1/admin/extfields/batch-sorting', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  const items = Array.isArray(body?.items) ? body.items : [];
+  return modelService.handleBatchUpdateExtFieldSorting(siteDB(c), items);
 });
 
 app.put('/api/v1/admin/extfields/:id', async (c) => {

@@ -1,6 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { useBatchSorting } from '../hooks/useBatchSorting'
+import { BatchSortSaveBar, SortInput } from '../components/BatchSortSaveBar'
 
 /** 欄目節點 */
 interface Sort {
@@ -59,6 +61,18 @@ function flattenForSelect(
   return acc
 }
 
+/** 將樹遞迴展平為一維列表，用於批量選擇 */
+function flattenTree(nodes: Sort[]): Sort[] {
+  const result: Sort[] = []
+  for (const node of nodes) {
+    result.push(node)
+    if (node.children?.length) {
+      result.push(...flattenTree(node.children))
+    }
+  }
+  return result
+}
+
 /** 遞迴渲染樹節點行 */
 function TreeNode({
   node,
@@ -68,6 +82,11 @@ function TreeNode({
   onEdit,
   onDelete,
   getModelName,
+  markDirty,
+  isDirty,
+  getDirtyValue,
+  selectedIds,
+  onToggleSelect,
 }: {
   node: Sort
   depth: number
@@ -76,13 +95,27 @@ function TreeNode({
   onEdit: (node: Sort) => void
   onDelete: (node: Sort) => void
   getModelName: (mcode: string) => string
+  markDirty: (id: number, sorting: number) => void
+  isDirty: (id: number) => boolean
+  getDirtyValue: (id: number) => number | undefined
+  selectedIds: Set<number>
+  onToggleSelect: (id: number) => void
 }) {
   const hasChildren = !!node.children && node.children.length > 0
   const isOpen = expanded.has(node.scode)
+  const isSelected = selectedIds.has(node.id)
 
   return (
     <>
       <tr className="border-b last:border-b-0 hover:bg-accent/40 transition-colors">
+        <td className="py-3 px-4">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect(node.id)}
+            className="rounded cursor-pointer"
+          />
+        </td>
         <td className="py-3 px-4">
           <div className="flex items-center" style={{ paddingLeft: `${depth * 24}px` }}>
             {hasChildren ? (
@@ -117,7 +150,14 @@ function TreeNode({
             {node.status === '1' ? '啟用' : '禁用'}
           </span>
         </td>
-        <td className="py-3 px-4 text-sm text-muted-foreground">{node.sorting}</td>
+        <td className="py-3 px-4">
+          <SortInput
+            value={node.sorting}
+            dirtyValue={getDirtyValue(node.id)}
+            isDirty={isDirty(node.id)}
+            onChange={(v) => markDirty(node.id, v)}
+          />
+        </td>
         <td className="py-3 px-4 text-xs text-muted-foreground font-mono">{node.scode}</td>
         <td className="py-3 px-4">
           <div className="flex items-center gap-1">
@@ -150,6 +190,11 @@ function TreeNode({
             onEdit={onEdit}
             onDelete={onDelete}
             getModelName={getModelName}
+            markDirty={markDirty}
+            isDirty={isDirty}
+            getDirtyValue={getDirtyValue}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
           />
         ))}
     </>
@@ -187,6 +232,14 @@ export default function Categories() {
   // 操作錯誤反饋
   const [actionError, setActionError] = useState('')
 
+  // 批量選擇
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+
+  // 批量刪除
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
+  const [batchDeleting, setBatchDeleting] = useState(false)
+  const [batchDeleteProgress, setBatchDeleteProgress] = useState({ current: 0, total: 0 })
+
   /** 拉取欄目樹 */
   const fetchTree = useCallback(async () => {
     setLoading(true)
@@ -203,6 +256,14 @@ export default function Categories() {
       setLoading(false)
     }
   }, [])
+
+  // 批量排序 hook（在 fetchTree 之後定義，因為需要引用它作為回調）
+  const { dirtyCount, isSaving, markDirty, saveSorts, clearDirty, isDirty, getDirtyValue } =
+    useBatchSorting({
+      endpoint: '/admin/sorts/batch-sorting',
+      onSuccess: () => fetchTree(),
+      onError: () => fetchTree(),
+    })
 
   /** 拉取模型列表（用於欄目綁定下拉） */
   const fetchModels = useCallback(async () => {
@@ -330,6 +391,55 @@ export default function Categories() {
     }
   }
 
+  /** 全部節點（展平，用於全選判斷） */
+  const allNodes = useMemo(() => flattenTree(tree), [tree])
+  const allSelected = allNodes.length > 0 && allNodes.every((n) => selectedIds.has(n.id))
+
+  /** 全選 / 取消全選 */
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allNodes.map((n) => n.id)))
+    }
+  }
+
+  /** 切換單個節點選擇 */
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /** 批量刪除（逐條調用，因為後端刪除是級聯的） */
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBatchDeleting(true)
+    setBatchDeleteProgress({ current: 0, total: ids.length })
+    setActionError('')
+    let failed = 0
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await api.del(`/admin/sorts/${ids[i]}`)
+      } catch {
+        failed++
+      }
+      setBatchDeleteProgress({ current: i + 1, total: ids.length })
+    }
+    setBatchDeleting(false)
+    setBatchDeleteOpen(false)
+    setSelectedIds(new Set())
+    clearDirty()
+    if (failed > 0) {
+      setActionError(`批量刪除完成，${failed} 項刪除失敗`)
+    }
+    await fetchTree()
+  }
+
   const parentOptions = flattenForSelect(tree)
 
   return (
@@ -341,6 +451,15 @@ export default function Categories() {
           <p className="text-sm text-muted-foreground mt-1">管理網站欄目分類樹狀結構</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setBatchDeleteOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-destructive text-destructive-foreground rounded-md hover:opacity-90 transition-opacity text-sm font-medium"
+            >
+              <span className="mr-1">🗑️</span>
+              批量刪除（{selectedIds.size}）
+            </button>
+          )}
           {tree.length > 0 && (
             <button
               onClick={toggleAll}
@@ -411,6 +530,15 @@ export default function Categories() {
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-secondary/50">
+                  <th className="text-left py-2.5 px-4 w-12">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="rounded cursor-pointer"
+                      title="全選/取消全選"
+                    />
+                  </th>
                   <th className="text-left py-2.5 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     欄目名稱
                   </th>
@@ -442,12 +570,28 @@ export default function Categories() {
                     onEdit={openEdit}
                     onDelete={setDeleteTarget}
                     getModelName={getModelName}
+                    markDirty={markDirty}
+                    isDirty={isDirty}
+                    getDirtyValue={getDirtyValue}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
                   />
                 ))}
               </tbody>
             </table>
           </div>
         </div>
+      )}
+
+      {/* 批量排序保存欄 */}
+      {!loading && !error && tree.length > 0 && (
+        <BatchSortSaveBar
+          dirtyCount={dirtyCount}
+          isSaving={isSaving}
+          onSave={saveSorts}
+          onClear={clearDirty}
+          className="mt-3"
+        />
       )}
 
       {/* 新增欄目對話框 */}
@@ -701,6 +845,63 @@ export default function Categories() {
               >
                 {deleting && <span className="animate-spin inline-block">🔄</span>}
                 {deleting ? '刪除中...' : '確認刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 批量刪除確認對話框 */}
+      {batchDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="px-5 py-4">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <span className="text-lg text-destructive">⚠️</span>
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-semibold">確認批量刪除</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    確定要刪除選中的{' '}
+                    <span className="font-medium text-foreground">{selectedIds.size}</span>{' '}
+                    個欄目嗎？
+                  </p>
+                  <p className="text-sm text-destructive mt-2">
+                    ⚠️ 刪除欄目將同時刪除所有子欄目和關聯內容，此操作不可撤銷！
+                  </p>
+                  {batchDeleting && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-blue-600">
+                      <span className="animate-spin inline-block">🔄</span>
+                      正在刪除 {batchDeleteProgress.current}/{batchDeleteProgress.total}...
+                    </div>
+                  )}
+                </div>
+              </div>
+              {actionError && (
+                <p className="text-sm text-destructive mt-3 flex items-center gap-1.5">
+                  <span className="mr-1">⚠️</span>
+                  {actionError}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t">
+              <button
+                onClick={() => setBatchDeleteOpen(false)}
+                disabled={batchDeleting}
+                className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={batchDeleting}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {batchDeleting && <span className="animate-spin inline-block">🔄</span>}
+                {batchDeleting
+                  ? `刪除中 ${batchDeleteProgress.current}/${batchDeleteProgress.total}`
+                  : '確認批量刪除'}
               </button>
             </div>
           </div>

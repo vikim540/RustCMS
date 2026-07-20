@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { useBatchSorting } from '../hooks/useBatchSorting'
+import { BatchSortSaveBar, SortInput } from '../components/BatchSortSaveBar'
 
 /** 模型數據（用於篩選下拉） */
 interface Model {
@@ -101,6 +103,11 @@ export default function ExtFields() {
   // 篩選模型
   const [filterMcode, setFilterMcode] = useState('')
 
+  // 批量刪除狀態
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
+
   // 對話框狀態
   const [modalOpen, setModalOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ExtField | null>(null)
@@ -154,6 +161,13 @@ export default function ExtFields() {
     }
   }, [filterMcode])
 
+  // 批量排序 hook（dirty tracking 模式）
+  const { dirtyCount, isSaving, markDirty, saveSorts, clearDirty, isDirty, getDirtyValue } = useBatchSorting({
+    endpoint: '/admin/extfields/batch-sorting',
+    onSuccess: () => fetchFields(),
+    onError: () => fetchFields(),
+  })
+
   useEffect(() => {
     fetchModels()
     fetchCategories()
@@ -162,6 +176,12 @@ export default function ExtFields() {
   useEffect(() => {
     fetchFields()
   }, [fetchFields])
+
+  // 切換篩選模型時清空選擇和 dirty 排序，避免跨列表誤操作
+  useEffect(() => {
+    setSelectedIds(new Set())
+    clearDirty()
+  }, [filterMcode, clearDirty])
 
   /** 取得模型名稱 */
   const getModelName = (mcode: string): string => {
@@ -180,6 +200,12 @@ export default function ExtFields() {
     const scodes = scode.split(',').map((s) => s.trim()).filter(Boolean)
     return scodes.map((s) => getCategoryName(s)).join('、')
   }
+
+  /** 顯示成功消息（3 秒後自動消失） */
+  const showSuccess = useCallback((msg: string) => {
+    setSuccessMsg(msg)
+    setTimeout(() => setSuccessMsg(''), 3000)
+  }, [])
 
   /** 開啟新增對話框 */
   const openCreate = () => {
@@ -263,12 +289,13 @@ export default function ExtFields() {
     }
   }
 
-  /** 刪除欄位 */
+  /** 刪除欄位（單條，後端物理刪除） */
   const handleDelete = async (item: ExtField) => {
-    if (!window.confirm(`確定要刪除欄位「${item.name}」嗎?`)) return
+    if (!window.confirm(`確定要徹底刪除欄位「${item.name}」嗎？此操作將同時刪除已有數據中的該欄位值，無法恢復！`)) return
     setActionLoading(item.id)
     try {
       await api.del(`/admin/extfields/${item.id}`)
+      showSuccess('已徹底刪除')
       await fetchFields()
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除失敗')
@@ -276,6 +303,58 @@ export default function ExtFields() {
       setActionLoading(null)
     }
   }
+
+  // 單列勾選 / 取消勾選
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  // 全選 / 取消全選（當前列表）
+  const handleToggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const allSelected = fields.length > 0 && fields.every((f) => prev.has(f.id))
+      const next = new Set(prev)
+      if (allSelected) {
+        for (const f of fields) next.delete(f.id)
+      } else {
+        for (const f of fields) next.add(f.id)
+      }
+      return next
+    })
+  }
+
+  // 批量刪除（逐條呼叫 DELETE，並行執行）
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return
+    if (!window.confirm(`確定要徹底刪除選中的 ${selectedIds.size} 個欄位嗎？此操作將同時刪除相關數據，無法恢復！`)) return
+    setBatchLoading(true)
+    setError('')
+    const ids = Array.from(selectedIds)
+    const results = await Promise.allSettled(
+      ids.map((id) => api.del(`/admin/extfields/${id}`)),
+    )
+    const failed = results.filter((r) => r.status === 'rejected').length
+    setBatchLoading(false)
+    if (failed > 0) {
+      setError(`批量刪除完成，失敗 ${failed} 項`)
+    } else {
+      showSuccess(`已徹底刪除 ${ids.length} 個欄位`)
+    }
+    setSelectedIds(new Set())
+    await fetchFields()
+  }
+
+  // 全選 / 部分選中狀態
+  const allSelected = fields.length > 0 && fields.every((f) => selectedIds.has(f.id))
+  const someSelected = fields.some((f) => selectedIds.has(f.id))
 
   return (
     <div className="p-6">
@@ -302,6 +381,14 @@ export default function ExtFields() {
         </div>
       )}
 
+      {/* 成功提示 */}
+      {successMsg && (
+        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
+          <span className="shrink-0">✅</span>
+          {successMsg}
+        </div>
+      )}
+
       {/* 篩選欄 */}
       <div className="mb-4 flex items-center gap-2">
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -321,6 +408,30 @@ export default function ExtFields() {
           ))}
         </select>
       </div>
+
+      {/* 批量操作欄 */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 flex items-center justify-between px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-md">
+          <span className="text-sm text-blue-700">已選 {selectedIds.size} 項</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBatchDelete}
+              disabled={batchLoading}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              <span className="text-sm">🗑️</span>
+              {batchLoading ? '刪除中...' : '批量刪除'}
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              disabled={batchLoading}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-muted-foreground bg-white border rounded-md hover:bg-accent transition-colors"
+            >
+              取消選擇
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 加載中 */}
       {loading && (
@@ -352,6 +463,21 @@ export default function ExtFields() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-secondary/50">
+                  <th className="px-3 py-3 text-left w-10">
+                    <button
+                      onClick={handleToggleSelectAll}
+                      className="inline-flex items-center"
+                      title={allSelected ? '取消全選' : '全選'}
+                    >
+                      {allSelected ? (
+                        <span className="text-primary">✅</span>
+                      ) : someSelected ? (
+                        <span className="text-primary opacity-50">☑️</span>
+                      ) : (
+                        <span className="text-muted-foreground">⬜</span>
+                      )}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">欄位名稱</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">DB列名</th>
@@ -364,11 +490,29 @@ export default function ExtFields() {
                 </tr>
               </thead>
               <tbody>
-                {fields.map((item) => (
+                {fields.map((item) => {
+                  const isSelected = selectedIds.has(item.id)
+                  return (
                   <tr
                     key={item.id}
-                    className="border-b last:border-0 hover:bg-accent/50 transition-colors"
+                    className={cn(
+                      'border-b last:border-0 hover:bg-accent/50 transition-colors',
+                      isSelected && 'bg-blue-50/50',
+                    )}
                   >
+                    <td className="px-3 py-3">
+                      <button
+                        onClick={() => handleToggleSelect(item.id)}
+                        className="inline-flex items-center"
+                        title={isSelected ? '取消選擇' : '選擇'}
+                      >
+                        {isSelected ? (
+                          <span className="text-primary">✅</span>
+                        ) : (
+                          <span className="text-muted-foreground">⬜</span>
+                        )}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{item.id}</td>
                     <td className="px-4 py-3 font-medium">{item.name}</td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{item.field}</td>
@@ -397,7 +541,15 @@ export default function ExtFields() {
                         {item.required === '1' ? '必填' : '可選'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.sorting ?? 0}</td>
+                    <td className="px-4 py-3">
+                      <SortInput
+                        value={item.sorting ?? 0}
+                        dirtyValue={getDirtyValue(item.id)}
+                        isDirty={isDirty(item.id)}
+                        onChange={(v) => markDirty(item.id, v)}
+                        disabled={isSaving}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
@@ -420,10 +572,23 @@ export default function ExtFields() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 批量排序保存欄 */}
+      {!loading && fields.length > 0 && (
+        <div className="mt-4">
+          <BatchSortSaveBar
+            dirtyCount={dirtyCount}
+            isSaving={isSaving}
+            onSave={saveSorts}
+            onClear={clearDirty}
+          />
         </div>
       )}
 
