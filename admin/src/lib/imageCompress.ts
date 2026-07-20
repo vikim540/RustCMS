@@ -22,9 +22,11 @@ export type CompressFormat = 'webp' | 'original';
 
 /** 壓縮選項 */
 export interface CompressOptions {
-  /** 最大寬度（px），默認 1920 */
+  /** 最大邊長（px）— 圖片最長邊不超過此值，按原始比例等比縮放，不會拉伸變形。默認 1920 */
+  maxDimension?: number;
+  /** @deprecated 已由 maxDimension 取代，保留向後兼容。最大寬度（px），默認 1920 */
   maxWidth?: number;
-  /** 最大高度（px），默認 1080 */
+  /** @deprecated 已由 maxDimension 取代，保留向後兼容。最大高度（px），默認 1080 */
   maxHeight?: number;
   /** 壓縮質量 0-1，默認 0.82（視覺無損） */
   quality?: number;
@@ -57,9 +59,8 @@ export interface CompressResult {
 }
 
 /** 默認壓縮參數 */
-const DEFAULTS: Required<Omit<CompressOptions, 'onProgress'>> = {
-  maxWidth: 1920,
-  maxHeight: 1080,
+const DEFAULTS: Required<Omit<CompressOptions, 'onProgress' | 'maxWidth' | 'maxHeight'>> = {
+  maxDimension: 1920,
   quality: 0.82,
   format: 'webp',
   filename: '',
@@ -128,8 +129,10 @@ export async function compressImage(
   try {
     // 構建 browser-image-compression 選項
     const outputType = opts.format === 'webp' ? 'image/webp' : file.type || 'image/png';
-    // 取寬高的較大值作為 maxWidthOrHeight
-    const maxWidthOrHeight = Math.max(opts.maxWidth, opts.maxHeight);
+    // 使用 maxDimension 作為最大邊長（按原始比例等比縮放，不會拉伸變形）
+    // 向後兼容：若未設置 maxDimension，則取 maxWidth/maxHeight 的較大值
+    const maxWidthOrHeight = opts.maxDimension
+      || Math.max(opts.maxWidth ?? 1920, opts.maxHeight ?? 1080);
 
     const compressOptions = {
       maxSizeMB: 50, // 上限 50MB（基本不會觸及，主要由質量控制）

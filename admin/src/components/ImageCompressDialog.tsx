@@ -47,8 +47,7 @@ const QUALITY_PRESETS = [
 
 export default function ImageCompressDialog({ files, onConfirm, onCancel }: ImageCompressDialogProps) {
   const [quality, setQuality] = useState(0.82)
-  const [maxWidth, setMaxWidth] = useState(1920)
-  const [maxHeight, setMaxHeight] = useState(1080)
+  const [maxDimension, setMaxDimension] = useState(1920)
   const [format, setFormat] = useState<CompressFormat>('webp')
   const [previews, setPreviews] = useState<FilePreview[]>([])
   const [compressing, setCompressing] = useState(false)
@@ -83,7 +82,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
     for (let i = 0; i < files.length; i++) {
       try {
         const result = await compressImage(files[i], {
-          quality, maxWidth, maxHeight, format,
+          quality, maxDimension, format,
           onProgress: (p) => {
             setPreviews((prev) => {
               const next = [...prev]
@@ -125,7 +124,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
       }
     }
     setCompressing(false)
-  }, [files, quality, maxWidth, maxHeight, format, previews])
+  }, [files, quality, maxDimension, format, previews])
 
   /** 設置變化時防抖重新壓縮 */
   useEffect(() => {
@@ -138,7 +137,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
       if (debounceTimer.current) clearTimeout(debounceTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quality, maxWidth, maxHeight, format])
+  }, [quality, maxDimension, format])
 
   /** 組件卸載時釋放所有 ObjectURL */
   useEffect(() => {
@@ -234,33 +233,43 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
             </div>
           </div>
 
-          {/* 尺寸 + 格式 */}
+          {/* 最大邊長 + 格式 */}
           <div className="flex flex-wrap items-end gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                最大寬度 (px)
+                最大邊長 (px)
               </label>
               <input
                 type="number"
                 min={100}
                 max={8000}
-                value={maxWidth}
-                onChange={(e) => setMaxWidth(Math.max(100, parseInt(e.target.value) || 1920))}
+                value={maxDimension}
+                onChange={(e) => setMaxDimension(Math.max(100, parseInt(e.target.value) || 1920))}
                 className="w-28 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
+              <p className="text-[10px] text-slate-400 mt-1">按原始比例等比縮放</p>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                最大高度 (px)
-              </label>
-              <input
-                type="number"
-                min={100}
-                max={8000}
-                value={maxHeight}
-                onChange={(e) => setMaxHeight(Math.max(100, parseInt(e.target.value) || 1080))}
-                className="w-28 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+            {/* 尺寸預設 */}
+            <div className="flex gap-1">
+              {[
+                { val: 1920, label: 'PC 1920' },
+                { val: 1080, label: 'Mobile 1080' },
+                { val: 800, label: '縮略 800' },
+                { val: 400, label: '小圖 400' },
+              ].map((preset) => (
+                <button
+                  key={preset.val}
+                  onClick={() => setMaxDimension(preset.val)}
+                  className={cn(
+                    'px-2.5 py-1.5 text-xs rounded-lg border transition-all',
+                    maxDimension === preset.val
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300',
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">

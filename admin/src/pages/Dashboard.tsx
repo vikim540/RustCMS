@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.5.2',
+    date: '2026-07-20 23:00:00',
+    icon: '📐',
+    latest: true,
+    changes: '媒體庫尺寸顯示 + 壓縮比例縮放 + 權限修復：媒體庫瀑布流卡片新增圖片尺寸徽章（ImageWithDimensions 組件，onLoad 取得 naturalWidth/naturalHeight，左下角黑色半透明徽章顯示 寬×高）；詳情面板也顯示前端取得的圖片尺寸；壓縮對話框從獨立「最大寬度1920 + 最大高度1080」改為單一「最大邊長」輸入（imageCompress.ts 新增 maxDimension 選項，browser-image-compression 的 maxWidthOrHeight 按原始比例等比縮放，不會拉伸變形），附帶四個尺寸預設（PC 1920 / Mobile 1080 / 縮略 800 / 小圖 400）；DB 新增 M301 媒體庫子菜單（M300 多媒體為父級容器，M301 為實際權限鍵，url=/admin/media 對應後端中間件），兩個角色均已加入 M301；後端 media 中間件註釋從 M300 更新為 M301；Layout.tsx LABEL_MCODE_MAP '媒體庫' 從 M300 改為 M301；權限審計：所有 24 個前端頁面均有對應 mcode 權限控制（資料庫管理/存儲設置僅超管可見），上傳端點 /admin/upload 保留 requireAuth（所有可上傳角色均已含 M301）',
+  },
+  {
     version: 'v1.5.1',
     date: '2026-07-20 22:30:00',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: '上傳體驗統一 + 媒體庫瀑布流 + Worker URL 禁用：ImageCompressDialog 新增前後圖片對比區域（原始 vs 壓縮後並排展示，棋盤格背景，hover 彈出全屏放大預覽不超過 100vw/vh）；移除對比區域 px-3 加寬顯示空間；統一所有上傳位置使用 ImageCompressDialog（ContentEdit 從 autoCompress=true 改為 Promise-based 對話框模式，與媒體庫/幻燈片完全一致）；新增 UploadProgressOverlay 組件（屏幕居中進度覆蓋層，替代各頁面內聯進度條，漸變進度條+錯誤卡片可關閉）；媒體庫從固定网格改為 CSS columns 瀑布流佈局（columns-2~6 響應式，圖片按原始比例顯示高度，方便辨別 PC/Mobile 圖片尺寸）；修復 MediaLibrary 上傳 bug（FileList 清空順序：先 Array.from 複製再清空 input.value）；幻燈片菜單從擴展內容移至多媒體分組（DB M402 pcode M400→M300，Layout.tsx 分組調整）；Worker 禁用 workers.dev 和 preview_urls（僅作為 Pages cms-admin 內部 ServiceBinding，Cloudflare API 確認 subdomain enabled=false）；修復 Vite 構建 0 字節文件問題（fixEmptyChunksPlugin 插件，輸出目錄 build→deploy）',
   },
   {

@@ -97,6 +97,41 @@ function FileIcon({ category }: { category: string }) {
   }
 }
 
+/** 圖片預覽組件 — 載入後自動取得原始尺寸並顯示 */
+function ImageWithDimensions({ src, alt, className, loading, onDimensions }: {
+  src: string
+  alt: string
+  className?: string
+  loading?: 'lazy' | 'eager'
+  onDimensions?: (w: number, h: number) => void
+}) {
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
+  return (
+    <div className="relative">
+      <img
+        src={src}
+        alt={alt}
+        className={className}
+        loading={loading}
+        onLoad={(e) => {
+          const img = e.target as HTMLImageElement
+          const d = { w: img.naturalWidth, h: img.naturalHeight }
+          setDims(d)
+          onDimensions?.(d.w, d.h)
+        }}
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = 'none'
+        }}
+      />
+      {dims && (
+        <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono leading-tight">
+          {dims.w}×{dims.h}
+        </span>
+      )}
+    </div>
+  )
+}
+
 /** 過濾標籤配置 */
 const FILTER_TABS: { key: FilterType; label: string; icon: string }[] = [
   { key: 'all', label: '全部', icon: '🔽' },
@@ -129,6 +164,9 @@ export default function MediaLibrary() {
   // ─── 圖片壓縮對話框狀態 ────────────────────────────────
   /** 待壓縮的圖片文件（非 null 時顯示壓縮對話框） */
   const [pendingImages, setPendingImages] = useState<File[] | null>(null)
+
+  // ─── 詳情面板圖片尺寸 ────────────────────────────────
+  const [detailImgDims, setDetailImgDims] = useState<{ w: number; h: number } | null>(null)
 
   // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
   // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
@@ -252,6 +290,7 @@ export default function MediaLibrary() {
   const handleShowDetail = async (key: string) => {
     setDetailKey(key)
     setDetail(null)
+    setDetailImgDims(null)
     setDetailLoading(true)
     try {
       const res = await api.get<MediaDetail>(`/admin/media/detail?key=${encodeURIComponent(key)}`)
@@ -500,14 +539,11 @@ export default function MediaLibrary() {
                   {/* 預覽區 — 圖片按原始比例顯示，非圖片固定高度 */}
                   <div className={`bg-gray-50 flex items-center justify-center relative overflow-hidden ${isImage ? '' : 'h-32'}`}>
                     {isImage && fileUrl ? (
-                      <img
+                      <ImageWithDimensions
                         src={fileUrl}
                         alt={fileName}
                         className="w-full h-auto object-cover"
                         loading="lazy"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none'
-                        }}
                       />
                     ) : (
                       <FileIcon category={category} />
@@ -660,6 +696,10 @@ export default function MediaLibrary() {
                         src={getFileUrl(detail.key, storageConfig.s3_public_url, storageConfig.s3_endpoint, storageConfig.s3_bucket)}
                         alt={detail.name}
                         className="max-w-full max-h-48 object-contain border rounded-lg"
+                        onLoad={(e) => {
+                          const img = e.target as HTMLImageElement
+                          setDetailImgDims({ w: img.naturalWidth, h: img.naturalHeight })
+                        }}
                       />
                     </div>
                   )}
@@ -687,10 +727,12 @@ export default function MediaLibrary() {
                             <td className="py-2">{detail.mime}</td>
                           </tr>
                         )}
-                        {detail.dimension && (
+                        {(detailImgDims || detail.dimension) && (
                           <tr className="border-b">
                             <td className="py-2 pr-4 text-muted-foreground">尺寸</td>
-                            <td className="py-2">{detail.dimension}</td>
+                            <td className="py-2 font-mono">
+                              {detailImgDims ? `${detailImgDims.w} × ${detailImgDims.h} px` : detail.dimension}
+                            </td>
                           </tr>
                         )}
                         <tr className="border-b">

@@ -388,7 +388,7 @@ app.use('/api/v1/admin/sorts/*', requireMenuPermission('/admin/content/sort')); 
 app.use('/api/v1/admin/singles/*', requireMenuPermission('/admin/content/single'));     // M203 單頁管理
 app.use('/api/v1/admin/messages/*', requireMenuPermission('/admin/content/message'));   // M204 留言管理
 app.use('/api/v1/admin/extfields/*', requireMenuPermission('/admin/content/extfield')); // M206 擴展字段
-app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M300 多媒體
+app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M301 媒體庫
 app.use('/api/v1/admin/links/*', requireMenuPermission('/admin/seo/link'));             // M401 友情連結
 app.use('/api/v1/admin/slides/*', requireMenuPermission('/admin/seo/slide'));           // M402 幻燈片
 app.use('/api/v1/admin/tags/*', requireMenuPermission('/admin/seo/tags'));              // M403 標籤管理
