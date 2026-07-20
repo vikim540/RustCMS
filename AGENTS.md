@@ -187,6 +187,7 @@ Cloudflarerustcms/
 - **Webhook**：自動檢測釘釘/企業微信/通用 JSON，分項開關
 - **郵件**：MailChannels / Resend HTTP API，HTML 模板
 - 通知日誌復用 `ay_syslog`，`ctx.waitUntil()` 確保異步生命週期
+- **版本更新通知**（v1.5.9+）：Dashboard 掛載時 `useEffect` 自動 POST `/notify/version-check`，後端用 KV 去重（`notified_version:{version}`）確保每版本只推送一次，格式為釘釘 ActionCard markdown（帶 emoji + 換行，與 `changes` 字段一致）
 
 ### 定時發布
 
@@ -271,7 +272,7 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 8. 圖標是否使用 emoji？
 9. **Hono 路由順序**：`/:id` 路由必須在子路徑路由（如 `/batch-sorting`、`/trash`、`/all`）之後註冊，否則子路徑會被當作 `:id` 匹配
 10. **是否同步更新了儀表盤的版本更新、API 開發手冊、系統信息？（強制）**
-11. **版本更新完成後是否推送釘釘 webhook 通知？（強制）**
+11. **版本更新後 Dashboard 自動推送釘釘 webhook 通知（KV 去重，無需手動）？**
 
 ---
 

@@ -47,7 +47,7 @@ const VERSIONS: VersionEntry[] = [
     date: '2026-07-20 15:02:38',
     icon: '🧹',
     latest: true,
-    changes: '移除重複 webhook 推送 + 版本格式化 + 幻燈片排序優化\n\n🔧 重複 webhook 修復\n• 根因：Dashboard useEffect 自動調用 /notify/version-check 端點推送第二次 webhook（無格式純文字），與開發者手動推送的重複\n• 移除：前端 useEffect + 後端 version-check 端點 + handleVersionNotify 函數\n• 版本通知改為僅由開發者部署後手動推送（markdown + emoji 格式）\n\n📝 版本更新格式化\n• changes 字段從純文字改為帶 emoji + 換行格式（whitespace-pre-line）\n• 與釘釘 webhook 推送格式保持一致\n\n📊 幻燈片排序優化\n• 默認排序從 0 改為從 1 開始（拖拽 idx+1，新增 maxSorting+1）\n• 列表按 sorting ASC 排序展示（拖到第一則顯示第一）',
+    changes: '版本通知自動化 + 格式化 + 幻燈片排序優化\n\n🔧 版本通知自動推送（恢復）\n• 機制：Dashboard useEffect 偵測最新版本 → POST /notify/version-check → 後端構造 ActionCard markdown 推送\n• KV 去重：notified_version:{version} 確保每個版本只推送一次（避免重複）\n• 格式：changes 字段帶 emoji + 換行，直接渲染為釘釘 ActionCard / 企業微信 markdown\n• 優勢：無需開發者手動推送，部署後首次訪問 Dashboard 即自動觸發\n\n📝 版本更新格式化\n• changes 字段從純文字改為帶 emoji + 換行格式（whitespace-pre-line）\n• 與釘釘 webhook 推送格式保持一致\n\n📊 幻燈片排序優化\n• 默認排序從 0 改為從 1 開始（拖拽 idx+1，新增 maxSorting+1）\n• 列表按 sorting ASC 排序展示（拖到第一則顯示第一）',
   },
   {
     version: 'v1.5.8',
@@ -271,6 +271,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/vectorize/reindex', desc: '重建向量索引', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-mail', desc: '測試郵件發送', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-webhook', desc: '測試 Webhook 推送', auth: true },
+  { method: 'POST', path: '/api/v1/admin/notify/version-check', desc: '版本更新自動通知（KV 去重）', auth: true },
   { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
@@ -344,6 +345,22 @@ export default function Dashboard() {
           visitsTotal: d?.visitsTotal ?? 0,
           todayNew: d?.todayNew ?? 0,
         })
+      })
+      .catch(() => {})
+  }, [])
+
+  // 版本更新自動通知 — 偵測最新版本，POST /notify/version-check
+  // 後端用 KV 去重（notified_version:{version}），每個版本只推送一次
+  // 推送格式：釘釘 ActionCard / 企業微信 markdown（帶 emoji + 換行）
+  useEffect(() => {
+    const latest = VERSIONS.find((v) => v.latest)
+    if (!latest) return
+    api
+      .post('/admin/notify/version-check', {
+        version: latest.version,
+        date: latest.date,
+        changes: latest.changes,
+        icon: latest.icon,
       })
       .catch(() => {})
   }, [])

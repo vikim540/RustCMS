@@ -330,7 +330,79 @@ export async function handleTestWebhook(db: D1Database, kv: KVNamespace, body: {
 }
 
 /**
- * 版本更新通知已廢棄（v1.5.9 移除）。
- * 原因：與開發者手動推送的釘釘 webhook 重複，造成兩次推送（第二次無格式）。
- * 版本更新通知改為由開發者在部署腳本中手動推送（markdown 格式 + emoji）。
+ * 版本更新通知 — Dashboard 掛載時自動觸發（v1.5.9 恢復）
+ *
+ * 設計：
+ * - 前端 Dashboard useEffect 偵測最新版本，POST /notify/version-check
+ * - 後端用 KV 去重（notified_version:{version}），每個版本只推送一次
+ * - 推送格式：釘釘 ActionCard / 企業微信 markdown（帶 emoji + 換行）
+ * - changes 字段本身已是 markdown 格式，直接渲染
+ *
+ * @param db    D1 數據庫
+ * @param kv    KV 緩存（用於去重）
+ * @param flags Flagship 綁定（功能開關）
+ * @param payload 版本信息 { version, date, changes, icon }
  */
+export async function handleVersionNotify(
+  db: D1Database,
+  kv: KVNamespace,
+  flags: Flagship | null,
+  payload: { version: string; date: string; changes: string; icon?: string },
+): Promise<Response> {
+  const { version, changes, icon } = payload;
+
+  // KV 去重：每個版本只推送一次
+  const notifiedKey = `notified_version:${version}`;
+  const already = await kv.get(notifiedKey);
+  if (already) return okData({ skipped: true, reason: '該版本已推送過通知' }, '成功');
+
+  // 從 D1 讀取配置（不依賴 KV 緩存，確保 webhook 配置最新）
+  const configs = await loadConfigsFromDB(db);
+  const webhookUrl = cfg(configs, 'webhook_url');
+  if (!webhookUrl) return okData({ skipped: true, reason: 'webhook_url 未配置' }, '成功');
+
+  // 檢查 webhook 總開關
+  const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined };
+  const webhookEnabled = await getFlagEnabled(flagEnv, 'webhook_enabled');
+  if (!webhookEnabled) return okData({ skipped: true, reason: 'webhook 未啟用' }, '成功');
+
+  // 構造 markdown 內容（changes 本身已是帶 emoji + 換行的 markdown）
+  const iconStr = icon || '🚀';
+  const text = `#### ${iconStr} RustCMS ${version} 發布\n\n${changes}\n\n---\n\n部署: Worker + Pages`;
+
+  const platform = detectPlatform(webhookUrl);
+  let webhookPayload: Record<string, unknown>;
+  if (platform === 'dingtalk') {
+    webhookPayload = { msgtype: 'actionCard', actionCard: { title: `RustCMS ${version} 發布`, text, hideAvatar: '0' } };
+  } else if (platform === 'wecom') {
+    webhookPayload = { msgtype: 'markdown', markdown: { content: text } };
+  } else {
+    webhookPayload = { form_name: `RustCMS ${version} 發布`, version, changes, timestamp: nowStr() };
+  }
+
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+    if (!resp.ok) {
+      await logNotify(db, 'webhook', false, `版本通知 ${version}: HTTP ${resp.status}`);
+      return err('webhook 推送失敗', 1001);
+    }
+    if (platform === 'dingtalk' || platform === 'wecom') {
+      const result = (await resp.json()) as RobotResponse;
+      if (result.errcode && result.errcode !== 0) {
+        await logNotify(db, 'webhook', false, `版本通知 ${version}: ${result.errmsg}`);
+        return err(result.errmsg || 'webhook 推送失敗', 1001);
+      }
+    }
+    // 標記已推送（KV 永久存儲，避免重複）
+    await kv.put(notifiedKey, '1');
+    await logNotify(db, 'webhook', true, `版本通知 ${version} 已推送`);
+    return okData({ pushed: true }, '版本通知推送成功');
+  } catch (e) {
+    await logNotify(db, 'webhook', false, `版本通知 ${version}: ${e instanceof Error ? e.message : '未知錯誤'}`);
+    return err('webhook 推送異常', 1001);
+  }
+}
