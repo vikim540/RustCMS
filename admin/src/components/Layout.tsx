@@ -66,22 +66,47 @@ const LABEL_MCODE_MAP: Record<string, string> = {
 const CONTENT_LIST_PERMISSION = 'M201'
 
 /**
- * 側邊欄分組配置（與 ay_menu 菜單樹結構完全對齊）
- * 分組順序與數據庫頂級菜單一致：內容管理 → 多媒體 → SEO設置 → 系統設置
- * 這樣權限選擇器（Roles.tsx）中的菜單樹與側邊欄完全對應，管理員可直觀控制
+ * 側邊欄分組配置（與 ay_menu 菜單樹結構完全對齊，參考 PbootCMS/Go 版分組邏輯）
+ * 分組順序：全局配置 → 基礎內容 → 文章內容 → 擴展內容 → 多媒體 → 系統管理
+ * 「文章內容」僅放文案相關（動態模型列表 + 回收站），技術性菜單在「全局配置」
  */
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: '內容管理',
+    title: '全局配置',
+    icon: '🌐',
+    items: [
+      { to: '/settings', label: '系統配置', icon: '🎛️' },
+      { to: '/models', label: '內容模型', icon: '📦' },
+      { to: '/extfields', label: '擴展字段', icon: '🧩' },
+    ],
+  },
+  {
+    title: '基礎內容',
+    icon: '📋',
+    items: [
+      { to: '/site', label: '站點信息', icon: '🌐' },
+      { to: '/company', label: '公司信息', icon: '🏢' },
+      { to: '/categories', label: '欄目管理', icon: '🗂️' },
+    ],
+  },
+  {
+    title: '文章內容',
     icon: '📄',
     items: [
       // 列表型模型子菜單在組件中動態注入（見 navGroups）
-      { to: '/categories', label: '欄目管理', icon: '🗂️' },
+      { to: '/trash', label: '回收站', icon: '🗑️' },
+    ],
+  },
+  {
+    title: '擴展內容',
+    icon: '📦',
+    items: [
       { to: '/singles', label: '單頁管理', icon: '📄' },
       { to: '/messages', label: '留言管理', icon: '💬' },
-      { to: '/extfields', label: '擴展字段', icon: '🧩' },
-      { to: '/models', label: '內容模型', icon: '📦' },
-      { to: '/trash', label: '回收站', icon: '🗑️' },
+      { to: '/links', label: '友情連結', icon: '🔗' },
+      { to: '/slides', label: '幻燈片', icon: '🖼️' },
+      { to: '/tags', label: '標籤管理', icon: '🏷️' },
+      { to: '/labels', label: '自定義標籤', icon: '📑' },
     ],
   },
   {
@@ -92,22 +117,9 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'SEO設置',
-    icon: '🔍',
+    title: '系統管理',
+    icon: '🛡️',
     items: [
-      { to: '/links', label: '友情連結', icon: '🔗' },
-      { to: '/slides', label: '幻燈片', icon: '🖼️' },
-      { to: '/tags', label: '標籤管理', icon: '🏷️' },
-      { to: '/labels', label: '自定義標籤', icon: '📑' },
-    ],
-  },
-  {
-    title: '系統設置',
-    icon: '⚙️',
-    items: [
-      { to: '/site', label: '站點信息', icon: '🌐' },
-      { to: '/company', label: '公司信息', icon: '🏢' },
-      { to: '/settings', label: '系統配置', icon: '🎛️' },
       { to: '/users', label: '系統用戶', icon: '👥' },
       { to: '/roles', label: '角色管理', icon: '🔐' },
       { to: '/menus', label: '菜單管理', icon: '📋' },
@@ -122,9 +134,9 @@ const NAV_GROUPS: NavGroup[] = [
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
-  // 預設所有分組收起，僅「內容管理」展開（文案日常工作區域）
+  // 預設所有分組收起，僅「文章內容」展開（文案日常工作區域）
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    () => new Set(NAV_GROUPS.filter((g) => g.title !== '內容管理').map((g) => g.title)),
+    () => new Set(NAV_GROUPS.filter((g) => g.title !== '文章內容').map((g) => g.title)),
   )
   // 模型列表（掛載時載入一次）
   const [models, setModels] = useState<Model[]>([])
@@ -141,7 +153,7 @@ export default function Layout() {
       })
   }, [])
 
-  // 構建導航分組（將動態模型注入「內容管理」分組前端，欄目管理保持首位）
+  // 構建導航分組（將動態模型注入「文章內容」分組前端，欄目管理保持首位）
   const navGroups = useMemo<NavGroup[]>(() => {
     const contentModelItems: NavItem[] = models
       .filter((m) => m.type === '2' && m.status === '1')
@@ -152,7 +164,7 @@ export default function Layout() {
         mcode: m.mcode,
       }))
     return NAV_GROUPS.map((group) =>
-      group.title === '內容管理'
+      group.title === '文章內容'
         ? { ...group, items: [...contentModelItems, ...group.items] }
         : group,
     )
