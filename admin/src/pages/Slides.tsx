@@ -205,10 +205,12 @@ export default function Slides() {
     })
   }, [slides])
 
-  // 按當前選中分組過濾幻燈片
+  // 按當前選中分組過濾幻燈片，並按 sorting ASC 排序展示（拖到第一則顯示第一）
   const filteredSlides = useMemo(() => {
-    if (activeGroup === 'all') return slides
-    return slides.filter((s) => (s.gid ?? '0') === activeGroup)
+    const list = activeGroup === 'all'
+      ? slides
+      : slides.filter((s) => (s.gid ?? '0') === activeGroup)
+    return [...list].sort((a, b) => (a.sorting ?? 0) - (b.sorting ?? 0))
   }, [slides, activeGroup])
 
   // 保存分組名稱
@@ -352,8 +354,8 @@ export default function Slides() {
     // 移動元素
     const [moved] = ordered.splice(fromIdx, 1)
     ordered.splice(toIdx, 0, moved)
-    // 重新分配 sorting 值
-    const items = ordered.map((s, idx) => ({ id: s.id, sorting: idx }))
+    // 重新分配 sorting 值（從 1 開始，而非 0）
+    const items = ordered.map((s, idx) => ({ id: s.id, sorting: idx + 1 }))
     // 先本地更新 UI
     setSlides((prev) => {
       const updates = new Map(items.map((i) => [i.id, i.sorting]))

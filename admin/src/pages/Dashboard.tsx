@@ -43,18 +43,25 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.5.9',
+    date: '2026-07-20 15:02:38',
+    icon: '🧹',
+    latest: true,
+    changes: '移除重複 webhook 推送 + 版本格式化 + 幻燈片排序優化\n\n🔧 重複 webhook 修復\n• 根因：Dashboard useEffect 自動調用 /notify/version-check 端點推送第二次 webhook（無格式純文字），與開發者手動推送的重複\n• 移除：前端 useEffect + 後端 version-check 端點 + handleVersionNotify 函數\n• 版本通知改為僅由開發者部署後手動推送（markdown + emoji 格式）\n\n📝 版本更新格式化\n• changes 字段從純文字改為帶 emoji + 換行格式（whitespace-pre-line）\n• 與釘釘 webhook 推送格式保持一致\n\n📊 幻燈片排序優化\n• 默認排序從 0 改為從 1 開始（拖拽 idx+1，新增 maxSorting+1）\n• 列表按 sorting ASC 排序展示（拖到第一則顯示第一）',
+  },
+  {
     version: 'v1.5.8',
     date: '2026-07-20 14:35:17',
     icon: '🐛',
-    latest: true,
-    changes: '幻燈片排序 API 根因修復 — Hono 路由順序 bug：PUT /slides/:id 在 PUT /slides/batch-sorting 之前註冊，導致 "batch-sorting" 被當作 :id 參數匹配到 handleUpdateSlide（返回 1001 "沒有需要更新的字段"），batch-sorting handler 永遠不會被執行。修復方式：將 batch-sorting 路由移到 :id 路由之前（與 contents/trash、models/all、roles/all 的正確順序一致）。舉一反三：檢查所有 /:id 路由與子路徑路由的順序，確認 contents/trash（GET 不衝突）、models/all（順序正確）、roles/all（順序正確）無同類問題',
+    latest: false,
+    changes: '🐛 幻燈片排序 API 根因修復 — Hono 路由順序 bug\n\n根因\n• PUT /slides/:id 在 PUT /slides/batch-sorting 之前註冊\n• Hono 按順序匹配，"batch-sorting" 被當作 :id 參數\n• 匹配到 handleUpdateSlide（返回 1001 "沒有需要更新的字段"）\n• batch-sorting handler 永遠不會被執行\n\n修復\n• 將 batch-sorting 路由移到 :id 路由之前\n\n舉一反三\n• contents/trash：GET 不衝突 ✓\n• models/all：順序正確 ✓\n• roles/all：順序正確 ✓\n\n驗證\n• ✅ batch-sorting API → code=0, msg=排序更新成功\n• ✅ 數據庫 ID 2 sorting = 99 已確認更新',
   },
   {
     version: 'v1.5.7',
     date: '2026-07-20 14:05:23',
     icon: '🔧',
     latest: false,
-    changes: '幻燈片排序 bug 修復 + 版本時間戳時區修正 + TZ 環境變量。Slides 排序根因：onBlur 中 val !== item.sorting 永遠為 false（onChange 已更新 item.sorting），改用 dirty tracking + 保存排序按鈕（修改後輸入框黃色高亮，底部顯示「保存排序（N 項）」按鈕批量提交）；新增幻燈片默認分組改為當前選中分組（或 1），排序自動填入該分組最大值+1；修正 v1.5.1-v1.5.6 版本時間戳從錯誤時區修正為香港 UTC+8；wrangler.jsonc 新增 TZ=Asia/Hong_Kong 環境變量',
+    changes: '🔧 幻燈片排序 bug 修復 + 時間戳時區修正 + TZ 環境變量\n\nSlides 排序修復\n• 根因：onBlur 中 val !== item.sorting 永遠為 false\n• 改用 dirty tracking + 保存排序按鈕（黃色高亮 + 批量提交）\n• 新增幻燈片默認分組改為當前選中分組（或 1）\n• 新增幻燈片排序自動填入該分組最大值+1\n\n時間戳修正\n• v1.5.1-v1.5.6 從錯誤時區修正為香港 UTC+8\n• v1.4.0 去除過於規整的 09:30:00\n\nTZ 環境變量\n• wrangler.jsonc 新增 TZ=Asia/Hong_Kong',
   },
   {
     version: 'v1.5.6',
@@ -264,7 +271,6 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/vectorize/reindex', desc: '重建向量索引', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-mail', desc: '測試郵件發送', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-webhook', desc: '測試 Webhook 推送', auth: true },
-  { method: 'POST', path: '/api/v1/admin/notify/version-check', desc: '版本更新自動通知（Dashboard 自動觸發）', auth: true },
   { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
@@ -340,22 +346,6 @@ export default function Dashboard() {
         })
       })
       .catch(() => {})
-  }, [])
-
-  // 🚀 版本更新自動通知 — Pages 部署後首次打開 Dashboard 時自動觸發
-  // 比對 KV 中的 last_notified_version，若不同則自動推送釘釘 webhook
-  useEffect(() => {
-    const latestVersion = VERSIONS.find((v) => v.latest)
-    if (!latestVersion) return
-    api
-      .post('/admin/notify/version-check', {
-        version: latestVersion.version,
-        date: latestVersion.date,
-        changes: latestVersion.changes,
-      })
-      .catch(() => {
-        /* 通知失敗靜默處理，不影響 Dashboard 正常使用 */
-      })
   }, [])
 
   /** 統計卡片配置 */
@@ -559,7 +549,7 @@ export default function Dashboard() {
                           <span>{v.date}</span>
                         </span>
                       </div>
-                      <p className="text-sm text-foreground leading-relaxed">
+                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
                         {v.changes}
                       </p>
                     </div>

@@ -859,14 +859,6 @@ app.post('/api/v1/admin/notify/test-webhook', async (c) => {
   return notifyService.handleTestWebhook(c.env.DB, c.env.CONFIG_CACHE, body);
 });
 
-// 版本更新自動通知 — Pages 部署後前端 Dashboard 自動調用
-app.post('/api/v1/admin/notify/version-check', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const body = await c.req.json();
-  return notifyService.handleVersionNotify(c.env.DB, c.env.CONFIG_CACHE, body);
-});
-
 // ===== 後台管理接口 - 站點信息 =====
 app.get('/api/v1/admin/site', async (c) => {
   const claims = await requireAuth(c);
