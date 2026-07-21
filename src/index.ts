@@ -127,6 +127,29 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// ===== 安全 HTTP 響應頭 + 請求體大小限制中間件 =====
+app.use('*', async (c, next) => {
+  // === 請求階段：JSON 請求體大小限制 2MB（排除文件上傳 multipart/form-data）===
+  const reqContentType = c.req.header('Content-Type') || '';
+  if (!reqContentType.includes('multipart/form-data') && c.req.method !== 'GET') {
+    const contentLength = parseInt(c.req.header('Content-Length') || '0', 10);
+    if (contentLength > 2 * 1024 * 1024) {
+      return c.json({ code: 1001, msg: '請求體超過 2MB 限制' }, 413);
+    }
+  }
+
+  await next();
+
+  // === 響應階段：安全 HTTP 頭（通用標準，非 Cloudflare 特有）===
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  // CSP: API 只返回 JSON，最嚴格策略（禁止任何資源加載/內聯腳本/iframe 嵌入）
+  c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+});
+
 // ===== 多站點上下文中間件（解析 X-Site-Id header → 路由到對應 D1 binding）=====
 // 數據路由通過 siteDB(c) 獲取當前站點庫，認證/系統路由通過 primaryDB(c) 始終用主庫
 // 未攜帶 X-Site-Id 或未知站點時，回退到主庫（endoscopy-cms）確保向後兼容

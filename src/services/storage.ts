@@ -377,6 +377,27 @@ export async function handleUpload(
     return err('文件大小超過 10MB 限制', 1001);
   }
 
+  // P3: 文件類型白名單校驗（防上傳可執行文件）
+  const detectedType = file.type || guessContentType(file.name);
+  const ALLOWED_MIME_TYPES = new Set([
+    // 圖片
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'image/avif', 'image/bmp', 'image/svg+xml', 'image/x-icon',
+    // 視頻
+    'video/mp4', 'video/webm', 'video/quicktime',
+    // 音頻
+    'audio/mpeg', 'audio/wav',
+    // 文檔
+    'application/pdf',
+    // 文本
+    'text/plain', 'text/csv',
+    // 壓縮包
+    'application/zip',
+  ]);
+  if (detectedType && !ALLOWED_MIME_TYPES.has(detectedType)) {
+    return err(`不支援的文件類型: ${detectedType || '未知'}，僅允許圖片/視頻/音頻/PDF/文本/ZIP`, 1001);
+  }
+
   const s3Config = await getS3Config(db, kv);
   if (!s3Config) {
     return err('S3 存儲未配置，請在系統設置中配置存儲參數', 1005);

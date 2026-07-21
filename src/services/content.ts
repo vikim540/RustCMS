@@ -8,6 +8,27 @@ import { fromQuery, offset, type Pagination } from '../utils/pagination';
 import { getDescendantScodes } from './sort';
 import { handleSaveContentExt } from './model';
 import { nowStr } from '../utils/datetime';
+import { sanitizeHtml, stripHtmlTags } from '../utils/sanitize';
+
+/** P2: 字段長度限制（合理略寬，新聞網站場景） */
+const FIELD_LENGTH_LIMITS: Record<string, number> = {
+  title: 200, subtitle: 200, filename: 100, titlecolor: 20,
+  author: 100, source: 100, outlink: 500,
+  ico: 500, pics: 2000, picstitle: 500,
+  tags: 200, keywords: 200, description: 500,
+  gtype: 10, gid: 50, gnote: 200, urlname: 100, enclosure: 500,
+};
+
+/** 校驗字段長度，返回錯誤消息或 null */
+function validateFieldLengths(body: Record<string, unknown>): string | null {
+  for (const [field, maxLen] of Object.entries(FIELD_LENGTH_LIMITS)) {
+    const val = body[field];
+    if (typeof val === 'string' && val.length > maxLen) {
+      return `字段 ${field} 超過最大長度 ${maxLen} 字（當前 ${val.length} 字）`;
+    }
+  }
+  return null;
+}
 
 /** 公開內容列表 API（僅返回摘要字段，排除 content 正文，減小響應體積） */
 export async function handleListContents(
@@ -305,9 +326,18 @@ export async function handleCreateContent(
   const title = body.title;
   if (!title) return err('缺少 title 參數', 1001);
 
+  // P2: 字段長度校驗
+  const lengthError = validateFieldLengths(body);
+  if (lengthError) return err(lengthError, 1001);
+
   const scode = body.scode || '';
   const now = nowStr();
   const date = body.date || now;
+
+  // P1: HTML 淨化（content 用 sanitizeHtml 保留富文本，description/keywords 剝離標籤）
+  const safeContent = sanitizeHtml(body.content || '');
+  const safeDescription = stripHtmlTags(body.description || '');
+  const safeKeywords = stripHtmlTags(body.keywords || '');
 
   // 全字段 INSERT（與前端表單字段一一對應，避免創建時丟失 author/source/ico/filename 等）
   const result = await db.prepare(
@@ -321,10 +351,10 @@ export async function handleCreateContent(
     body.source || '',
     body.outlink || '',
     body.ico || '',
-    body.content || '',
+    safeContent,
     body.tags || '',
-    body.keywords || '',
-    body.description || '',
+    safeKeywords,
+    safeDescription,
     date,
     body.status || '1',
     body.istop || '0',
@@ -357,6 +387,10 @@ export async function handleUpdateContent(
   operator: string = '',
 ): Promise<Response> {
   try {
+    // P2: 字段長度校驗
+    const lengthError = validateFieldLengths(body);
+    if (lengthError) return err(lengthError, 1001);
+
     const now = nowStr();
 
     const allowedFields = [
@@ -372,12 +406,18 @@ export async function handleUpdateContent(
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        const val = body[field];
+        let val = body[field];
         // sorting 為整數類型，其餘為字串
         if (field === 'sorting' && typeof val === 'number') {
           sets.push(`${field} = ?`);
           binds.push(String(val));
         } else if (typeof val === 'string') {
+          // P1: HTML 淨化（content 保留富文本標籤，description/keywords 剝離標籤）
+          if (field === 'content') {
+            val = sanitizeHtml(val);
+          } else if (field === 'description' || field === 'keywords') {
+            val = stripHtmlTags(val);
+          }
           sets.push(`${field} = ?`);
           binds.push(val);
         }

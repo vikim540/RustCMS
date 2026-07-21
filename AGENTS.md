@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.2**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.3**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.8.3 | 2026-07-21 | 安全加固 P0-P3：安全 HTTP 響應頭（CSP/HSTS/X-Frame-Options 等通用標準，Worker 中間件+Pages _headers）、HTML 淨化防 XSS（sanitize.ts 純函數，整合到內容 CRUD）、輸入長度校驗+2MB 請求體限制、文件上傳 MIME 白名單 |
 | v1.8.2 | 2026-07-21 | 清理 ay_content_ext 幽靈字段（13個無定義 ext_* 列刪除，三庫同步）、媒體庫 WebP blob bug 修復（跳過二次壓縮+後端擴展名推斷）、操作日誌分類重組（7類互斥+新增爬蟲tab）、ImagePreviewWithRemove 統一組件抽象（取代3處重複按鈕） |
 | v1.8.1 | 2026-07-21 | 文章詳情 API 重構：參考 PbootCMS ParserModel.getContent() 平鋪模式，欄目名稱(sortname)+擴展字段(ext_*)直接合併到 content 對象，移除 sort/extFields/extValues 獨立對象，null 字段不返回，prev/next 改為同欄目樹範圍查詢（getSubScodes 邏輯） |
 | v1.8.0 | 2026-07-21 | 新增 GET /admin/sorts/all 端點（無需 M202 權限）、修復非授權用戶欄目下拉為空（ContentEdit/Contents 改用 /all 端點） |
@@ -294,6 +295,15 @@ Cloudflarerustcms/
 - **GlobalErrorToast**：`admin/src/components/GlobalErrorToast.tsx` 固定左下角紅色邊框彈框，手動關閉，用於測試階段非開發者用戶反饋 bug
 - **集成**：`api.ts` 攔截非 401 錯誤調用 `showGlobalError(title, message, detail?)`，401 通過 `CustomEvent` 觸發導航至 login
 
+### 安全加固（v1.8.3）
+
+> **P0-P3 防禦縱深**，通用 HTTP 安全標準（非 Cloudflare 特有）。
+
+- **P0 安全 HTTP 響應頭**：`src/index.ts` 中間件統一設置 6 個頭（X-Content-Type-Options / X-Frame-Options / Referrer-Policy / Permissions-Policy / HSTS / CSP）。API 的 CSP 為 `default-src 'none'`（最嚴格，只返回 JSON）。前端 SPA 通過 `admin/public/_headers` 設置獨立 CSP（允許 Turnstile 腳本+iframe、允許 https 圖片源）
+- **P1 HTML 淨化**：`src/utils/sanitize.ts` 提供 `sanitizeHtml()`（保留富文本標籤，移除 `<script>`/危險標籤/`on*` 事件/`javascript:` 協議）和 `stripHtmlTags()`（剝離所有標籤）。整合到 `handleCreateContent` + `handleUpdateContent`，content 字段用 sanitizeHtml，description/keywords 用 stripHtmlTags
+- **P2 輸入長度校驗**：`FIELD_LENGTH_LIMITS` 常量定義 18 個字段最大長度（新聞網站場景，略寬），`validateFieldLengths()` 超長返回明確錯誤。請求體大小限制 2MB（排除 `multipart/form-data` 文件上傳）
+- **P3 文件上傳 MIME 白名單**：`src/services/storage.ts` 的 `ALLOWED_MIME_TYPES` Set，僅允許圖片/視頻/音頻/PDF/文本/ZIP，非白名單返回 1001 錯誤
+
 ---
 
 ## 常用命令
@@ -349,6 +359,8 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 9. **Hono 路由順序**：`/:id` 路由必須在子路徑路由（如 `/batch-sorting`、`/trash`、`/all`）之後註冊，否則子路徑會被當作 `:id` 匹配
 10. **是否同步更新了儀表盤的版本更新、API 開發手冊、系統信息？（強制）**
 11. **版本更新後 Dashboard 自動推送釘釘 webhook 通知（KV 去重，無需手動）？**
+12. **新增內容寫入接口是否整合 sanitizeHtml/stripHtmlTags 淨化？（XSS 防禦）**
+13. **新增上傳端點是否检查 MIME 白名單？（文件上傳安全）**
 
 ---
 

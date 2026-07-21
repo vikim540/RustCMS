@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.3',
+    date: '2026-07-21 18:00:00',
+    icon: '🔒',
+    latest: true,
+    changes: '🔒 安全加固 P0-P3（防禦縱深，通用 HTTP 標準）\n\n📋 P0：安全 HTTP 響應頭\n• Worker 中間件統一設置 6 個安全頭\n  - X-Content-Type-Options: nosniff（防 MIME 嗅探）\n  - X-Frame-Options: DENY（防點擊劫持）\n  - Referrer-Policy: strict-origin-when-cross-origin\n  - Permissions-Policy: camera/microphone/geolocation/payment 全禁\n  - Strict-Transport-Security: HSTS 預載入\n  - Content-Security-Policy: default-src \'none\'（API 只返回 JSON，最嚴格策略）\n• Pages 新增 _headers 文件（前端 SPA 安全頭，CSP 允許 Turnstile）\n• 這些是通用 HTTP 安全標準，非 Cloudflare 特有\n\n📋 P1：HTML 淨化（XSS 防禦）\n• 新增 src/utils/sanitize.ts（輕量級純函數，無 DOM 依賴）\n• sanitizeHtml()：移除 <script>、危險標籤、on* 事件、javascript: 協議\n• stripHtmlTags()：剝離所有 HTML 標籤（用於 description/keywords）\n• 整合到 handleCreateContent + handleUpdateContent\n\n📋 P2：輸入長度校驗 + 請求體限制\n• FIELD_LENGTH_LIMITS 常量定義 18 個字段最大長度（新聞網站場景）\n• validateFieldLengths() 校驗函數，超長返回明確錯誤消息\n• 請求體大小限制 2MB（排除文件上傳 multipart/form-data）\n\n📋 P3：文件上傳 MIME 白名單\n• ALLOWED_MIME_TYPES 白名單（圖片/視頻/音頻/PDF/文本/ZIP）\n• 非白名單類型返回 1001 錯誤，拒絕可執行文件上傳',
+  },
+  {
     version: 'v1.8.2',
     date: '2026-07-21 17:37:10',
     icon: '🧹',
-    latest: true,
+    latest: false,
     changes: '🧹 數據庫清理 + 媒體庫 bug 修復 + 日誌分類重組 + 組件抽象\n\n📋 數據庫\n• 清理 ay_content_ext 幽靈字段（13 個無定義的 ext_* 刪除）\n  - 保留：extid, contentid, ext_price, ext_type, ext_color（PbootCMS 原版）, ext_content_whatsapp\n  - 三個數據庫（endoscopy/smile/vision）同步清理\n\n🐛 Bug 修復\n• 媒體庫上傳 WebP 變成 blob 文件\n  - 根因：browser-image-compression 對 WebP 二次壓縮時 Blob name 異常\n  - 修復：WebP 跳過壓縮直接上傳 + 後端 generateKey 從 Content-Type 推斷擴展名\n\n📋 日誌分類重組（7 類完全互斥）\n• 新增 🕷️ 爬蟲日誌 tab（spider）\n• 「系統日誌」重命名為「管理操作」（更準確）\n• 「內容日誌」重命名為「內容操作」\n• 頁面標題從「系統日誌」改為「操作日誌」\n\n🔧 組件抽象\n• 新增 ImagePreviewWithRemove 統一組件\n  - 取代 ContentEdit 中 3 處重複的圖片預覽+移除按鈕\n  - 統一圓形按鈕樣式，消除樣式不一致',
   },
   {
