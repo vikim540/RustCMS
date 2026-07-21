@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.7',
+    date: '2026-07-21 16:30:00',
+    icon: '🗂️',
+    latest: true,
+    changes: '🗂️ 幻燈片分組名稱持久化（取代 localStorage 方案）\n\n🐛 原問題\n• 幻燈片分組名稱（如「首頁輪播」「費用一覽」「大腸鏡檢查」）僅存於瀏覽器 localStorage\n• 不同賬號/設備登錄後看不到分組名稱，只顯示「分組 1」「分組 2」等無意義標籤\n\n🔧 修復\n• 新建 ay_slide_group 表（gid → name 映射），存儲於數據庫，所有賬號共享\n• 種子數據：gid 1=首頁輪播, gid 2=費用一覽, gid 3=大腸鏡檢查\n• 新增 4 個 API 端點：GET/POST/PUT/DELETE /admin/slides/groups\n• 前端移除 localStorage 方案，改為從後端 API 拉取分組列表\n• 新建站點自動建表 + 種子數據（site.ts 同步更新）\n• 遷移 0012 需在所有站點庫執行',
+  },
+  {
     version: 'v1.7.6',
     date: '2026-07-21 15:30:00',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: '🔒 側邊欄權限過濾修復（根因：邊緣快取跨用戶污染）\n\n🐛 現象\n• 角色已設定有限權限，但用戶登錄後側邊欄仍顯示全部菜單\n• 點擊無權限菜單時後端正確返回 403「無權限訪問此功能」\n• 前端側邊欄與後端權限判斷不一致\n\n🔍 根因分析\n• Workers Cache 中間件僅排除 /api/v1/admin/*，未排除 /api/v1/auth/*\n• /auth/profile 響應被設為 Cache-Control: public, max-age=300\n• 邊緣快取以 URL + X-Site-Id 為 key，不含 Authorization 頭\n• 管理員（全部權限）的 profile 被快取後，普通用戶拿到管理員的權限列表\n• 前端據此渲染側邊欄 → 顯示全部菜單\n• 後端 reloadUserPermissions 每次從 D1 實時載入 → 正確返回 403\n\n🔧 修復\n• cache 中間件新增排除 /api/v1/auth/*（認證接口返回用戶專屬數據，嚴禁跨用戶快取）\n• /auth/profile 響應顯式設置 Cache-Control: no-store（防禦性雙保險）',
   },
   {
@@ -368,6 +375,10 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片', auth: true },
+  { method: 'GET', path: '/api/v1/admin/slides/groups', desc: '幻燈片分組列表 (v1.7.7+)', auth: true },
+  { method: 'POST', path: '/api/v1/admin/slides/groups', desc: '新增幻燈片分組 (v1.7.7+)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/slides/groups/:gid', desc: '更新幻燈片分組名稱 (v1.7.7+)', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/slides/groups/:gid', desc: '刪除幻燈片分組 (v1.7.7+)', auth: true },
   // 欄目管理 + 擴展字段 (v1.6.1+)
   { method: 'GET', path: '/api/v1/admin/sorts', desc: '欄目樹 (?mcode=)', auth: true },
   { method: 'POST', path: '/api/v1/admin/sorts', desc: '新增欄目', auth: true },

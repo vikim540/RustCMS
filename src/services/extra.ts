@@ -416,6 +416,102 @@ export async function handleListSlides(
 }
 
 // ============================================================================
+// 模塊 3b: 幻燈片分組 (ay_slide_group)
+// 存儲 gid → name 映射，讓所有賬號共享分組名稱（取代原 localStorage 方案）
+// ============================================================================
+
+/** 獲取所有幻燈片分組（按 sorting ASC 排序） */
+export async function handleListSlideGroups(db: D1Database): Promise<Response> {
+  const result = await db.prepare(
+    'SELECT * FROM ay_slide_group ORDER BY sorting ASC, CAST(gid AS INTEGER) ASC, id ASC',
+  ).all();
+  return okData(result.results, '成功');
+}
+
+/** 新增幻燈片分組（gid 唯一，自動計算下一個可用 ID） */
+export async function handleCreateSlideGroup(
+  db: D1Database,
+  body: { gid?: string; name?: string; sorting?: number },
+): Promise<Response> {
+  const now = nowStr();
+
+  // 若未指定 gid，自動計算下一個可用數字 ID
+  let gid = (body.gid || '').trim();
+  if (!gid) {
+    const row = await db.prepare(
+      'SELECT MAX(CAST(gid AS INTEGER)) as maxGid FROM ay_slide_group',
+    ).first<{ maxGid: number | null }>();
+    gid = String((row?.maxGid ?? 0) + 1);
+  }
+
+  // 檢查 gid 是否已存在
+  const existing = await db.prepare(
+    'SELECT id FROM ay_slide_group WHERE gid = ?',
+  ).bind(gid).first();
+  if (existing) {
+    return err('分組 ID 已存在', 1002);
+  }
+
+  const name = (body.name || '').trim() || `分組 ${gid}`;
+  const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
+
+  await db.prepare(
+    'INSERT INTO ay_slide_group (gid, name, sorting, create_time, update_time) VALUES (?, ?, ?, ?, ?)',
+  ).bind(gid, name, sorting, now, now).run();
+
+  return okData({ gid, name, sorting }, '分組創建成功');
+}
+
+/** 更新幻燈片分組名稱（按 gid 查找） */
+export async function handleUpdateSlideGroup(
+  db: D1Database,
+  gid: string,
+  body: { name?: string; sorting?: number },
+): Promise<Response> {
+  const now = nowStr();
+  const sets: string[] = [];
+  const binds: (string | number)[] = [];
+
+  const name = (body.name || '').trim();
+  if (name) {
+    sets.push('name = ?');
+    binds.push(name);
+  }
+  if (typeof body.sorting === 'number') {
+    sets.push('sorting = ?');
+    binds.push(body.sorting);
+  }
+
+  if (sets.length === 0) {
+    return err('沒有需要更新的字段', 1001);
+  }
+
+  sets.push('update_time = ?');
+  binds.push(now);
+  binds.push(gid);
+
+  const sql = `UPDATE ay_slide_group SET ${sets.join(', ')} WHERE gid = ?`;
+  const result = await db.prepare(sql).bind(...binds).run();
+
+  if (result.meta.changes === 0) {
+    return err('分組不存在', 1004);
+  }
+  return ok('分組更新成功');
+}
+
+/** 刪除幻燈片分組（按 gid 查找，不刪除關聯的幻燈片） */
+export async function handleDeleteSlideGroup(db: D1Database, gid: string): Promise<Response> {
+  const result = await db.prepare(
+    'DELETE FROM ay_slide_group WHERE gid = ?',
+  ).bind(gid).run();
+
+  if (result.meta.changes === 0) {
+    return err('分組不存在', 1004);
+  }
+  return ok('分組刪除成功');
+}
+
+// ============================================================================
 // 模塊 4: 標籤管理 (ay_tags)
 // ============================================================================
 

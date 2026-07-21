@@ -43,29 +43,15 @@ const EMPTY_FORM: SlideForm = {
   sorting: 0,
 }
 
-/** localStorage key for group name mapping */
-const GROUP_NAMES_KEY = 'cms_slide_group_names'
-
-/** 從 localStorage 讀取分組名稱映射 */
-function loadGroupNames(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(GROUP_NAMES_KEY)
-    return raw ? JSON.parse(raw) : {}
-  } catch {
-    return {}
-  }
+/** 幻燈片分組數據結構（後端 ay_slide_group 表） */
+interface SlideGroup {
+  id: number
+  gid: string
+  name: string
+  sorting: number
 }
 
-/** 保存分組名稱映射到 localStorage */
-function saveGroupNames(names: Record<string, string>): void {
-  try {
-    localStorage.setItem(GROUP_NAMES_KEY, JSON.stringify(names))
-  } catch {
-    // ignore
-  }
-}
-
-/** 獲取分組顯示名稱 */
+/** 獲取分組顯示名稱（從後端拉取的映射中查找，找不到時 fallback） */
 function getGroupDisplayName(gid: string, groupNames: Record<string, string>): string {
   return groupNames[gid] || `分組 ${gid}`
 }
@@ -85,11 +71,10 @@ export default function Slides() {
 
   // 分組狀態
   const [activeGroup, setActiveGroup] = useState<string>('all')
-  const [groupNames, setGroupNames] = useState<Record<string, string>>({})
+  const [groups, setGroups] = useState<SlideGroup[]>([])
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [groupNameInput, setGroupNameInput] = useState('')
   const [newGroupMode, setNewGroupMode] = useState(false)
-  const [newGroupId, setNewGroupId] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
 
   // 圖片上傳狀態
@@ -187,24 +172,41 @@ export default function Slides() {
     fetchSlides()
   }, [fetchSlides])
 
-  // 載入分組名稱
-  useEffect(() => {
-    setGroupNames(loadGroupNames())
+  // 從後端載入分組列表（取代原 localStorage 方案，所有賬號共享）
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await api.get<SlideGroup[]>('/admin/slides/groups')
+      setGroups(res.data ?? [])
+    } catch {
+      // 靜默失敗，不阻塞幻燈片載入
+    }
   }, [])
 
-  // 提取所有唯一分組 ID（按數值排序）
+  useEffect(() => {
+    fetchGroups()
+  }, [fetchGroups])
+
+  // 從 groups 派生 gid → name 映射（供 UI 查找）
+  const groupNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const g of groups) {
+      map[g.gid] = g.name
+    }
+    return map
+  }, [groups])
+
+  // 提取所有唯一分組 ID（合併分組表 + 幻燈片實際使用的 gid，按數值排序）
   const uniqueGroups = useMemo(() => {
     const set = new Set<string>()
-    for (const s of slides) {
-      set.add(s.gid ?? '0')
-    }
+    for (const g of groups) set.add(g.gid)
+    for (const s of slides) set.add(s.gid ?? '0')
     return Array.from(set).sort((a, b) => {
       const na = parseInt(a, 10)
       const nb = parseInt(b, 10)
       if (isNaN(na) || isNaN(nb)) return a.localeCompare(b)
       return na - nb
     })
-  }, [slides])
+  }, [groups, slides])
 
   // 按當前選中分組過濾幻燈片，並按 sorting ASC 排序展示（拖到第一則顯示第一）
   const filteredSlides = useMemo(() => {
@@ -214,35 +216,33 @@ export default function Slides() {
     return [...list].sort((a, b) => (a.sorting ?? 0) - (b.sorting ?? 0))
   }, [slides, activeGroup])
 
-  // 保存分組名稱
-  const handleSaveGroupName = (gid: string) => {
+  // 保存分組名稱（調用後端 API，所有賬號共享）
+  const handleSaveGroupName = async (gid: string) => {
     const name = groupNameInput.trim()
-    const updated = { ...groupNames }
-    if (name) {
-      updated[gid] = name
-    } else {
-      delete updated[gid]
+    try {
+      await api.put(`/admin/slides/groups/${gid}`, { name })
+      await fetchGroups()
+    } catch {
+      // 失敗時不更新本地狀態
     }
-    setGroupNames(updated)
-    saveGroupNames(updated)
     setEditingGroupId(null)
   }
 
-  // 新增分組 — ID 自動遞增，名稱可選
-  const handleAddGroup = () => {
-    // 計算下一個可用的分組 ID（數字遞增，不允許重複）
-    const existingIds = uniqueGroups.map((g) => parseInt(g, 10)).filter((n) => !isNaN(n))
-    const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0
-    const nextGid = String(maxId + 1)
-    const name = newGroupName.trim() || `分組 ${nextGid}`
-    const updated = { ...groupNames, [nextGid]: name }
-    setGroupNames(updated)
-    saveGroupNames(updated)
-    setNewGroupMode(false)
-    setNewGroupId(nextGid)
-    setNewGroupName('')
-    // 自動切換到新分組
-    setActiveGroup(nextGid)
+  // 新增分組 — 後端自動生成 gid，名稱可選
+  const handleAddGroup = async () => {
+    const name = newGroupName.trim()
+    try {
+      const res = await api.post<{ gid: string }>('/admin/slides/groups', { name })
+      await fetchGroups()
+      setNewGroupMode(false)
+      setNewGroupName('')
+      // 自動切換到新分組
+      if (res.data?.gid) {
+        setActiveGroup(res.data.gid)
+      }
+    } catch {
+      // 失敗時保持新增模式，用戶可重試
+    }
   }
 
   /** 開啟新增對話框 — 默認分組 1，排序自增 */

@@ -853,6 +853,37 @@ app.delete('/api/v1/admin/links/:id', async (c) => {
 });
 
 // ===== 後台管理接口 - 幻燈片 =====
+// ⚠️ groups 子路徑路由必須在 :id 路由之前註冊（遵循 Hono 路由順序約束）
+
+// 分組管理（gid → name 映射，存儲於數據庫，所有賬號共享）
+app.get('/api/v1/admin/slides/groups', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return extraService.handleListSlideGroups(siteDB(c));
+});
+
+app.post('/api/v1/admin/slides/groups', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return extraService.handleCreateSlideGroup(siteDB(c), body);
+});
+
+app.put('/api/v1/admin/slides/groups/:gid', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const gid = c.req.param('gid');
+  const body = await c.req.json();
+  return extraService.handleUpdateSlideGroup(siteDB(c), gid, body);
+});
+
+app.delete('/api/v1/admin/slides/groups/:gid', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const gid = c.req.param('gid');
+  return extraService.handleDeleteSlideGroup(siteDB(c), gid);
+});
+
 app.get('/api/v1/admin/slides', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

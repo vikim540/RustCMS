@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.6**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.7**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.7.7 | 2026-07-21 | 幻燈片分組名稱持久化（新建 ay_slide_group 表，取代 localStorage 方案，所有賬號共享分組名稱）、新增 4 個分組管理 API 端點、種子數據 gid 1=首頁輪播/2=費用一覽/3=大腸鏡檢查、site.ts 新站點同步建表 |
 | v1.7.6 | 2026-07-21 | 側邊欄權限過濾修復（根因：Workers Cache 邊緣快取 /auth/profile 跨用戶污染，管理員 profile 被快取後普通用戶拿到全部權限）、cache 中間件新增排除 /api/v1/auth/*、/auth/profile 響應顯式 no-store |
 | v1.7.5 | 2026-07-21 | 權限管理三處修復：多站點管理位置修正（mcode M308→M508 對齊 M500 父分組、pcode M300→M500）、角色代碼自動生成（前端移除 rcode 輸入框，後端已自動生成）、用戶創建站點權限丟失修復（handleCreateUser 返回新用戶 ID） |
 | v1.7.4 | 2026-07-21 | 媒體庫權限修復（新增 /admin/media/config 端點，M301 權限，解決非超管用戶圖片預覽為空）、存儲配置安全修復（s3_access_key 改為 *** 遮罩） |
@@ -100,7 +101,7 @@ Cloudflarerustcms/
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   ├── wrangler.jsonc          # Pages 部署配置（pages_build_output_dir: deploy）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法，當前 0001-0011）
+├── migrations/                 # D1 遷移（冪等語法，當前 0001-0012）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```
 
@@ -138,7 +139,7 @@ Cloudflarerustcms/
 - 表前綴 `ay_` 不變，**可按需修改/新增表結構和字段**
 - SQL 始終 `.bind()` 參數化，**禁止字符串拼接**
 - 新增表/字段用冪等語法：`CREATE TABLE IF NOT EXISTS`、`ALTER TABLE ... ADD COLUMN`
-- 遷移文件編號需唯一（當前存在重複編號 0003/0004，後續新增從 0006 開始）
+- 遷移文件編號需唯一（當前存在重複編號 0003/0004，後續新增從 0013 開始）
 
 ### 禁止依賴
 

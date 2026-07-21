@@ -461,6 +461,16 @@ CREATE TABLE IF NOT EXISTS ay_slide (
   pic_mobile TEXT, link TEXT, title TEXT, subtitle TEXT, button_text TEXT, sorting INTEGER DEFAULT 255,
   create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
 );
+CREATE TABLE IF NOT EXISTS ay_slide_group (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, gid TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+  sorting INTEGER DEFAULT 255, create_time TEXT, update_time TEXT
+);
+INSERT OR IGNORE INTO ay_slide_group (gid, name, sorting, create_time, update_time)
+VALUES ('1', '首頁輪播', 1, datetime('now', '+8 hours'), datetime('now', '+8 hours'));
+INSERT OR IGNORE INTO ay_slide_group (gid, name, sorting, create_time, update_time)
+VALUES ('2', '費用一覽', 2, datetime('now', '+8 hours'), datetime('now', '+8 hours'));
+INSERT OR IGNORE INTO ay_slide_group (gid, name, sorting, create_time, update_time)
+VALUES ('3', '大腸鏡檢查', 3, datetime('now', '+8 hours'), datetime('now', '+8 hours'));
 CREATE TABLE IF NOT EXISTS ay_tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT, acode TEXT DEFAULT 'cn', name TEXT, link TEXT,
   sorting INTEGER DEFAULT 255, create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
