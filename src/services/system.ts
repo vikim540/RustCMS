@@ -197,7 +197,9 @@ export async function handleCreateUser(
     .run();
 
   if (result.meta.changes > 0) {
-    return ok('用戶創建成功');
+    // 返回新用戶 ID，供前端立即保存站點權限分配（v1.7.5 修復：創建後站點權限丟失）
+    const newId = result.meta.last_row_id;
+    return okData({ id: newId, ucode }, '用戶創建成功');
   }
   return err('用戶創建失敗', 1005);
 }

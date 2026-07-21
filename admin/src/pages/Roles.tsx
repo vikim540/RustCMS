@@ -239,17 +239,13 @@ export default function Roles() {
       setActionError('角色名稱不能為空')
       return
     }
-    if (!form.rcode.trim()) {
-      setActionError('角色代碼不能為空')
-      return
-    }
+    // rcode 由後端自動生成（generateRcode），前端不再提交
 
     setSaving(true)
     setActionError('')
     try {
       const payload = {
         name: form.name.trim(),
-        rcode: form.rcode.trim(),
         description: form.description,
         status: form.status,
         levels: form.levels,
@@ -563,14 +559,13 @@ export default function Roles() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1.5">
-                    角色代碼 <span className="text-destructive">*</span>
+                    角色代碼 <span className="text-muted-foreground text-xs">（系統自動生成）</span>
                   </label>
                   <input
                     type="text"
-                    value={form.rcode}
-                    onChange={(e) => setForm((f) => ({ ...f, rcode: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-                    placeholder="如 R101"
+                    value={editTarget ? form.rcode : '創建後自動生成（如 R101）'}
+                    disabled
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono bg-gray-50 text-muted-foreground cursor-not-allowed"
                   />
                 </div>
               </div>

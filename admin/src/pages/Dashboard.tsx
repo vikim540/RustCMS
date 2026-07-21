@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.5',
+    date: '2026-07-21 14:00:00',
+    icon: '⚙️',
+    latest: true,
+    changes: '⚙️ 權限管理三處修復\n\n📋 多站點管理位置修正\n• 根因：數據庫 ay_menu 表中 M308（多站點管理）的 pcode 為 M300（多媒體），應為 M500（系統管理）\n• 修復：UPDATE ay_menu SET pcode=M500, sorting=580 WHERE mcode=M308\n• 影響：菜單管理頁面中多站點管理從「多媒體」分組移至「系統管理」分組\n\n🔐 角色代碼自動生成\n• 根因：前端 Roles.tsx 要求用戶手動填寫 rcode（如 R101），但後端 handleCreateRole 已自動生成 rcode（generateRcode），前端填寫的值被忽略\n• 修復：移除前端 rcode 輸入框，改為顯示「創建後自動生成（如 R101）」\n• 編輯時顯示已有 rcode（唯讀）\n\n👤 用戶創建站點權限丟失修復\n• 根因：handleCreateUser 返回 ok(用戶創建成功) 不含新用戶 ID，前端 userId 為 undefined，站點分配 POST 被跳過\n• 修復：改為 okData({ id: newId, ucode })，前端正確獲取 userId 後立即保存站點權限',
+  },
+  {
     version: 'v1.7.4',
     date: '2026-07-21 13:20:00',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: '🔒 媒體庫權限修復 + 存儲配置安全修復\n\n🖼️ 非超管用戶圖片預覽為空修復\n• 根因：MediaLibrary 和 ContentEdit 調用 /admin/storage/config 獲取存儲配置，但該端點需要 requireSuperAdmin，非超管用戶收到 403 導致 storageConfig 為 null\n• 結果：fileUrl 為空，圖片 fallback 到 🖼️ emoji 而非實際預覽\n• 修復：新增 GET /admin/media/config 端點（M301 權限，僅返回 s3_public_url/endpoint/bucket 非敏感字段）\n• 前端 MediaLibrary + ContentEdit 媒體選擇器改用新端點\n\n🔐 存儲配置安全修復\n• handleGetStorageConfig 中 s3_access_key 原為明文返回，改為 *** 遮罩（與 s3_secret_key 一致）\n• 新增 handleGetMediaPublicConfig 函數，僅暴露非敏感字段',
   },
   {
