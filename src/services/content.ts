@@ -177,6 +177,7 @@ export async function handleCreateContent(
   db: D1Database,
   body: { title?: string; scode?: string; content?: string; date?: string; status?: string; istop?: string; isrecommend?: string; isheadline?: string; sorting?: string; ext_fields?: Record<string, unknown>; [key: string]: unknown },
   acode: string = 'endoscopy',
+  operator: string = '',
 ): Promise<Response> {
   const title = body.title;
   if (!title) return err('缺少 title 參數', 1001);
@@ -186,9 +187,10 @@ export async function handleCreateContent(
   const date = body.date || now;
 
   const result = await db.prepare(
-    "INSERT INTO ay_content (acode, scode, title, content, date, status, istop, isrecommend, isheadline, sorting, visits, likes, oppose, gtype, gid, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, '4', '', ?, ?)",
+    "INSERT INTO ay_content (acode, scode, title, titlecolor, content, date, status, istop, isrecommend, isheadline, sorting, visits, likes, oppose, gtype, gid, create_user, update_user, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, '4', '', ?, ?, ?, ?)",
   ).bind(
     acode, scode, title,
+    body.titlecolor || '',
     body.content || '',
     date,
     body.status || '1',
@@ -196,6 +198,7 @@ export async function handleCreateContent(
     body.isrecommend || '0',
     body.isheadline || '0',
     body.sorting || '255',
+    operator, operator,
     now, now,
   ).run();
 
@@ -218,6 +221,7 @@ export async function handleUpdateContent(
   db: D1Database,
   id: number,
   body: Record<string, unknown>,
+  operator: string = '',
 ): Promise<Response> {
   const now = nowStr();
 
@@ -247,6 +251,8 @@ export async function handleUpdateContent(
   }
 
   if (sets.length > 0) {
+    sets.push('update_user = ?');
+    binds.push(operator);
     sets.push('update_time = ?');
     binds.push(now);
     binds.push(id);

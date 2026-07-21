@@ -159,6 +159,7 @@ const EXT_TYPE_LABELS: Record<string, string> = {
 /** 表單數據 */
 interface FormData {
   title: string
+  titlecolor: string
   scode: string
   content: string
   keywords: string
@@ -180,6 +181,7 @@ interface FormData {
 /** 空表單初始值 */
 const EMPTY_FORM: FormData = {
   title: '',
+  titlecolor: '',
   scode: '',
   content: '',
   keywords: '',
@@ -857,6 +859,7 @@ export default function ContentEdit() {
         const localDate = rawDate ? rawDate.replace(' ', 'T').slice(0, 16) : ''
         setForm({
           title: content.title ?? '',
+          titlecolor: content.titlecolor ?? '',
           scode: content.scode ?? '',
           content: content.content ?? '',
           keywords: content.keywords ?? '',
@@ -1174,6 +1177,7 @@ export default function ContentEdit() {
       const submitDate = form.date ? form.date.replace('T', ' ') + ':00' : ''
       const payload = {
         title: form.title.trim(),
+        titlecolor: form.titlecolor,
         scode: form.scode,
         content,
         keywords: form.keywords,
@@ -1274,14 +1278,36 @@ export default function ContentEdit() {
               <label className="block text-sm font-medium mb-1.5">
                 標題 <span className="text-destructive">*</span>
               </label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={(e) => updateField('title', e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="請輸入內容標題"
-                required
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => updateField('title', e.target.value)}
+                  className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="請輸入內容標題"
+                  required
+                />
+                {/* 標題顏色選擇器 */}
+                <div className="relative flex items-center gap-1.5">
+                  <input
+                    type="color"
+                    value={form.titlecolor || '#333333'}
+                    onChange={(e) => updateField('titlecolor', e.target.value)}
+                    className="w-10 h-10 rounded-md border cursor-pointer p-0.5 bg-transparent"
+                    title="標題顏色"
+                  />
+                  {form.titlecolor && (
+                    <button
+                      type="button"
+                      onClick={() => updateField('titlecolor', '')}
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                      title="清除顏色"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* 欄目 + 狀態 */}

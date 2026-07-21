@@ -505,7 +505,8 @@ app.post('/api/v1/admin/contents', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  const result = await contentService.handleCreateContent(siteDB(c), body, currentSiteId(c));
+  const operator = claims.realname || claims.username || '';
+  const result = await contentService.handleCreateContent(siteDB(c), body, currentSiteId(c), operator);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
   return result;
@@ -516,7 +517,8 @@ app.put('/api/v1/admin/contents/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  const result = await contentService.handleUpdateContent(siteDB(c), id, body);
+  const operator = claims.realname || claims.username || '';
+  const result = await contentService.handleUpdateContent(siteDB(c), id, body, operator);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
   return result;

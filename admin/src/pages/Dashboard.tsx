@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.6.3',
+    date: '2026-07-21 10:30:00',
+    icon: '🎨',
+    latest: true,
+    changes: '🎨 標題顏色選擇器 + 操作者自動記錄 + Slug/發佈時間調整\n\n🎨 標題顏色 (titlecolor)\n• 文章編輯器標題旁新增顏色選擇器，可設置標題字色\n• 數據以 # 色號格式存儲（如 #ff0000）\n• 可一鍵清除顏色（恢復默認）\n\n👤 操作者自動記錄 (create_user/update_user)\n• 創建內容時自動記錄 create_user 為當前登錄用戶\n• 更新內容時自動更新 update_user 為當前操作用戶\n• 前端無需填寫，純後端處理（從 JWT claims 獲取 realname/username）\n\n🔄 Slug + 發佈時間移至基本內容\n• Slug (URL別名) 和發佈時間從高級內容 Tab 移到基本內容 Tab\n\n🗂️ 模型管理清理\n• 僅保留專題和文章兩個模型，刪除其餘 5 個模型',
+  },
+  {
     version: 'v1.6.2',
     date: '2026-07-20 22:30:00',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '🔧 內容管理修復 + 標籤輸入體驗升級\n\n📂 父欄目文章列表修復\n• 後台內容列表點擊父欄目（如醫生專欄）現在正確顯示所有子欄目文章\n• handleAdminListContents 改用 getDescendantScodes（與公開 API 邏輯一致）\n\n📋 公開內容列表 API 字段補全\n• 補回被過度刪除的字段：acode、subscode、enclosure、gnote、create_user、update_user\n• 僅排除 content 正文字段（減小響應體積）\n\n🏷️ 標籤輸入器升級\n• 文字輸入改為 TagInput 組件：輸入後按 Enter 生成可關閉的標籤塊\n• 歷史標籤快速補充：顯示曾用標籤，點擊即可添加，無需重複打字\n• 新增 API：GET /admin/contents/all-tags 獲取所有歷史標籤\n\n🔁 Slug 去重\n• 移除基本內容 Tab 中重複的 Slug 字段，僅保留高級內容 Tab 中的 Slug',
   },
   {
