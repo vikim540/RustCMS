@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api, getCurrentSiteId, type SiteInfo } from '../lib/api'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 創建站點表單數據 */
 interface CreateSiteForm {
@@ -189,15 +190,9 @@ export default function Sites() {
       {/* 站點列表 */}
       <div className="bg-white rounded-lg border overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <span className="text-2xl">⏳</span>
-            <p className="mt-2">載入中...</p>
-          </div>
+          <LoadingState text="載入中..." />
         ) : sites.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <span className="text-2xl">📭</span>
-            <p className="mt-2">暫無站點</p>
-          </div>
+          <EmptyState icon="📭" text="暫無站點" />
         ) : (
           <table className="w-full">
             <thead>

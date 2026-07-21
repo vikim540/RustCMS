@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 import { formatDate } from '../lib/utils'
 
 /** 備份文件數據結構 */
@@ -144,10 +145,7 @@ export default function DatabasePage() {
 
       {/* 加載中 */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       )}
 
       {/* 空狀態 */}

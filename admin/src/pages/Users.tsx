@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api, type SiteInfo } from '../lib/api'
+import { LoadingState, EmptyState, ErrorState } from '../components/StateDisplay'
 import { cn, formatDate } from '../lib/utils'
 
 /** 系統用戶數據結構 */
@@ -390,10 +391,7 @@ export default function Users() {
 
       {/* 加載中 */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       )}
 
       {/* 空狀態 */}

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
+import { LoadingState } from '../components/StateDisplay'
 import { cn } from '../lib/utils'
 
 /** 站點信息數據結構（香港本地化：移除 icp 內地備案、theme 模板） */
@@ -85,10 +86,7 @@ export default function SiteInfoPage() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       </div>
     )
   }

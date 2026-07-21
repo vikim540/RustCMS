@@ -4,6 +4,7 @@ import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import { useImageUpload } from '../hooks/useImageUpload'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 幻燈片數據結構 */
 interface Slide {
@@ -546,34 +547,27 @@ export default function Slides() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && slides.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">🖼️</span>
-          <p className="mb-3">尚未創建任何幻燈片</p>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
-          >
-            <span className="mr-1">➕</span>
-            新增幻燈片
-          </button>
-        </div>
+        <>
+          <EmptyState icon="🖼️" text="尚未創建任何幻燈片" />
+          <div className="flex justify-center -mt-16 pb-8">
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+            >
+              <span className="mr-1">➕</span>
+              新增幻燈片
+            </button>
+          </div>
+        </>
       )}
 
       {/* 當前分組無數據 */}
       {!loading && slides.length > 0 && filteredSlides.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">📭</span>
-          <p>此分組下暫無幻燈片</p>
-        </div>
+        <EmptyState icon="📭" text="此分組下暫無幻燈片" />
       )}
 
       {/* 幻燈片表格 */}

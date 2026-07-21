@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 單頁狀態: '1'=已發布, '0'=草稿 */
 type SingleStatus = '1' | '0'
@@ -127,21 +128,15 @@ export default function Singles() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && singles.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">📄</span>
-          <p className="mb-3">尚未創建任何單頁</p>
+        <div className="flex flex-col items-center">
+          <EmptyState icon="📄" text="尚未創建任何單頁" />
           <Link
             to="/singles/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm -mt-10"
           >
             <span className="mr-1">➕</span>
             新增單頁

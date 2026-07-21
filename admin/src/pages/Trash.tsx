@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { formatDate } from '../lib/utils'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 回收站內容數據結構 */
 interface TrashContent {
@@ -149,19 +150,11 @@ export default function Trash() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && contents.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">🗑️</span>
-          <p>回收站為空</p>
-        </div>
+        <EmptyState icon="🗑️" text="回收站為空" />
       )}
 
       {/* 內容表格 */}

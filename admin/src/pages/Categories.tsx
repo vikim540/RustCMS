@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { useBatchSorting } from '../hooks/useBatchSorting'
 import { BatchSortSaveBar, SortInput } from '../components/BatchSortSaveBar'
+import { LoadingState, EmptyState, ErrorState } from '../components/StateDisplay'
 
 /** 欄目節點 */
 interface Sort {
@@ -487,40 +488,25 @@ export default function Categories() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          加載中...
-        </div>
-      )}
+      {loading && <LoadingState text="加載中..." />}
 
       {/* 加載錯誤 */}
-      {!loading && error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-2xl mb-3 text-destructive">⚠️</span>
-          <p className="mb-3">{error}</p>
-          <button
-            onClick={fetchTree}
-            className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors"
-          >
-            重新加載
-          </button>
-        </div>
-      )}
+      {!loading && error && <ErrorState message={error} onRetry={fetchTree} />}
 
       {/* 空狀態 */}
       {!loading && !error && tree.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">🗂️</span>
-          <p className="mb-3">尚未創建任何欄目</p>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm font-medium"
-          >
-            <span className="mr-1">➕</span>
-            新增欄目
-          </button>
-        </div>
+        <>
+          <EmptyState icon="🗂️" text="尚未創建任何欄目" />
+          <div className="flex justify-center -mt-16 pb-8">
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm font-medium"
+            >
+              <span className="mr-1">➕</span>
+              新增欄目
+            </button>
+          </div>
+        </>
       )}
 
       {/* 欄目樹表格 */}

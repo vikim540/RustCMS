@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import { useImageUpload } from '../hooks/useImageUpload'
@@ -505,15 +506,9 @@ export default function MediaLibrary() {
 
       {/* 文件網格 */}
       {loading && files.length === 0 ? (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       ) : filteredFiles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-30">🖼️</span>
-          <p>暫無文件，點擊「上傳文件」按鈕上傳</p>
-        </div>
+        <EmptyState icon="🖼️" text="暫無文件" hint="點擊「上傳文件」按鈕上傳" />
       ) : (
         <>
           {/* 瀑布流佈局：寬度固定，高度自適應圖片原始比例，方便辨別 PC/Mobile 圖片 */}
@@ -683,10 +678,7 @@ export default function MediaLibrary() {
             {/* Modal 內容 */}
             <div className="flex-1 overflow-y-auto p-6">
               {detailLoading ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground">
-                  <span className="animate-spin inline-block mr-2">🔄</span>
-                  載入中...
-                </div>
+                <LoadingState text="載入中..." inline />
               ) : detail ? (
                 <div className="space-y-6">
                   {/* 文件預覽（圖片類型） */}

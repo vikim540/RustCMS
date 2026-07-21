@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
+import { LoadingState, EmptyState, ErrorState } from '../components/StateDisplay'
 
 /** 留言狀態: '0'=待審核, '1'=已審核 */
 type MessageStatus = '0' | '1'
@@ -182,19 +183,11 @@ export default function Messages() {
       </div>
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && messages.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">💬</span>
-          <p>暫無留言數據</p>
-        </div>
+        <EmptyState icon="💬" text="暫無留言數據" />
       )}
 
       {/* 留言表格 */}
@@ -302,10 +295,7 @@ export default function Messages() {
             </div>
             <div className="px-5 py-4">
               {detailLoading ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground">
-                  <span className="animate-spin inline-block mr-2">🔄</span>
-                  載入中...
-                </div>
+                <LoadingState text="載入中..." />
               ) : detailTarget ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -370,7 +360,7 @@ export default function Messages() {
                   </div>
                 </div>
               ) : (
-                <p className="text-center text-muted-foreground py-8">載入失敗</p>
+                <ErrorState message="載入失敗" />
               )}
               {actionError && (
                 <p className="mt-3 text-sm text-destructive flex items-center gap-1.5">

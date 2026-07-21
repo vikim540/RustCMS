@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { LoadingState } from '../components/StateDisplay'
 import { cn } from '../lib/utils'
 
 /** 單頁狀態: '1'=已發布, '0'=草稿 */
@@ -127,10 +128,7 @@ export default function SingleEdit() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       </div>
     )
   }

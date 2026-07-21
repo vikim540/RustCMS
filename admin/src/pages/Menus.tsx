@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 import { cn } from '../lib/utils'
 
 /** 菜單節點 */
@@ -355,10 +356,7 @@ export default function Menus() {
 
       {/* 加載中 */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       )}
 
       {/* 空狀態 */}

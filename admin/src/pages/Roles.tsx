@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 角色數據結構 */
 interface Role {
@@ -406,26 +407,22 @@ export default function Roles() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && roles.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">🔐</span>
-          <p className="mb-3">尚未創建任何角色</p>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
-          >
-            <span className="mr-1">➕</span>
-            新增角色
-          </button>
-        </div>
+        <>
+          <EmptyState icon="🔐" text="尚未創建任何角色" />
+          <div className="flex justify-center -mt-16 pb-8">
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+            >
+              <span className="mr-1">➕</span>
+              新增角色
+            </button>
+          </div>
+        </>
       )}
 
       {/* 角色表格 */}
@@ -637,16 +634,9 @@ export default function Roles() {
                 {/* 權限樹內容 */}
                 <div className="max-h-[400px] overflow-y-auto px-2 py-2">
                   {menuLoading ? (
-                    <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
-                      <span className="animate-spin inline-block mr-2">🔄</span>
-                      載入菜單樹...
-                    </div>
+                    <LoadingState text="載入菜單樹..." inline />
                   ) : menuTree.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-                      <span className="text-2xl mb-2 opacity-50">📋</span>
-                      <p className="text-sm">尚未配置任何菜單</p>
-                      <p className="text-xs mt-1">請先到「菜單管理」創建菜單項</p>
-                    </div>
+                    <EmptyState icon="📋" text="尚未配置任何菜單" hint="請先到「菜單管理」創建菜單項" />
                   ) : (
                     <div className="space-y-0.5">
                       {menuTree.map((node) => renderPermissionNode(node, 0))}

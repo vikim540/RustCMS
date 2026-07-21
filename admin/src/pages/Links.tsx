@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 友情連結數據結構 */
 interface LinkItem {
@@ -154,21 +155,15 @@ export default function Links() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && links.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">🔗</span>
-          <p className="mb-3">尚未創建任何友情連結</p>
+        <div className="flex flex-col items-center">
+          <EmptyState icon="🔗" text="尚未創建任何友情連結" />
           <button
             onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm -mt-10"
           >
             <span className="mr-1">➕</span>
             新增連結

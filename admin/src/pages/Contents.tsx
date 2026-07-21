@@ -3,6 +3,7 @@ import type { FormEvent, ChangeEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 內容狀態: '1'=已發布, '0'=草稿, '-1'=回收站 */
 type ContentStatus = '1' | '0' | '-1'
@@ -621,14 +622,14 @@ export default function Contents() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-muted-foreground">
-                    載入中...
+                  <td colSpan={11}>
+                    <LoadingState text="載入中..." inline />
                   </td>
                 </tr>
               ) : contents.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-muted-foreground">
-                    暫無數據
+                  <td colSpan={11}>
+                    <EmptyState icon="📝" text="暫無數據" inline />
                   </td>
                 </tr>
               ) : (

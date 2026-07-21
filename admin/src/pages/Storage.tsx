@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { LoadingState } from '../components/StateDisplay'
 
 interface StorageConfig {
   storage_type: string
@@ -101,8 +102,8 @@ export default function Storage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <span className="animate-spin inline-block text-xl text-muted-foreground">🔄</span>
+      <div className="p-6">
+        <LoadingState text="載入中..." />
       </div>
     )
   }

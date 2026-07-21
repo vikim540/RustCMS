@@ -5,6 +5,7 @@ import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import { TagInput } from '../components/TagInput'
+import { LoadingState } from '../components/StateDisplay'
 import { useImageUpload } from '../hooks/useImageUpload'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
@@ -1212,9 +1213,7 @@ export default function ContentEdit() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       </div>
     )
   }

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { LoadingState } from '../components/StateDisplay'
 
 /** 公司信息數據結構（香港本地化：移除郵編/QQ/ICP，新增 WhatsApp） */
 interface CompanyInfo {
@@ -93,10 +94,7 @@ export default function Company() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
+        <LoadingState text="載入中..." />
       </div>
     )
   }

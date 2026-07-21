@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 日誌數據結構 */
 interface LogItem {
@@ -180,19 +181,11 @@ export default function Logs() {
       </div>
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && logs.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-4xl mb-3 opacity-50">📜</span>
-          <p>暫無日誌記錄</p>
-        </div>
+        <EmptyState icon="📜" text="暫無日誌記錄" />
       )}
 
       {/* 日誌表格 */}

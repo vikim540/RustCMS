@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
+import { LoadingState, ErrorState } from '../components/StateDisplay'
 import { cn } from '../lib/utils'
 import { useFeatureFlags } from '../hooks/useFeatureFlags'
 import { TagInput } from '../components/TagInput'
@@ -617,10 +618,7 @@ export default function Settings() {
 
       {/* 加載中 */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          加載中...
-        </div>
+        <LoadingState text="加載中..." />
       )}
 
       {/* 加載錯誤 */}

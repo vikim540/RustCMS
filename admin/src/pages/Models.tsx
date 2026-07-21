@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 模型數據結構 */
 interface Model {
@@ -163,26 +164,22 @@ export default function Models() {
       )}
 
       {/* 加載中 */}
-      {loading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <span className="animate-spin inline-block mr-2">🔄</span>
-          載入中...
-        </div>
-      )}
+      {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
       {!loading && models.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-3xl mb-3 opacity-50">📦</span>
-          <p className="mb-3">尚未創建任何模型</p>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
-          >
-            <span className="mr-1">➕</span>
-            新增模型
-          </button>
-        </div>
+        <>
+          <EmptyState icon="📦" text="尚未創建任何模型" />
+          <div className="flex justify-center -mt-16 pb-8">
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+            >
+              <span className="mr-1">➕</span>
+              新增模型
+            </button>
+          </div>
+        </>
       )}
 
       {/* 模型表格 */}
