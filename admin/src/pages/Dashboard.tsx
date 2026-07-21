@@ -44,7 +44,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.8.0',
-    date: '2026-07-21 15:45:00',
+    date: '2026-07-21 16:09:50',
     icon: '📝',
     latest: true,
     changes: '📝 文章詳情 API 補充欄目名稱+自定義字段 + 欄目下拉權限修復\n\n📋 新增功能\n• GET /contents/:idOrSlug 響應新增 sort 字段（欄目名稱、mcode 等）\n  - 前端可直接獲取歸屬欄目名稱（如「疾病知識」），無需二次查詢\n• GET /contents/:idOrSlug 響應新增 extFields + extValues\n  - extFields：擴展字段定義（ay_extfield，含字段名稱、類型、描述）\n  - extValues：擴展字段值（ay_content_ext，ext_ 前綴字段）\n  - 解決「了解更多 WhatsApp」連結等自定義字段缺失問題\n• 新增 GET /admin/sorts/all 端點（無需 M202 權限，所有登錄用戶可訪問）\n\n🐛 Bug 修復\n• 非授權用戶欄目下拉為空\n  - 根因：ContentEdit/Contents 調用 /admin/sorts（需 M202 權限），非授權用戶被 403 攔截\n  - 修復：改用 /admin/sorts/all（在 PUBLIC_READ_PATHS 白名單中）\n• endoscopyeditor 編輯文章無權限\n  - 根因：同上，欄目下拉載入失敗導致無法選擇欄目',
