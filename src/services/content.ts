@@ -83,6 +83,11 @@ export async function handleListContents(
  *  - 參數為非數字字符串 → 按 filename (slug) 查詢
  *  ⚠️ slug 對應的是 ay_content.filename 字段（PbootCMS 約定），不是 urlname
  *     urlname 在 PbootCMS 中用於欄目（ay_content_sort.urlname），文章層面很少使用
+ *
+ *  v1.8.1+：參考 PbootCMS ParserModel.getContent()，欄目名稱和擴展字段直接平鋪到 content 對象中
+ *  - sortname / sortfilename：來自 ay_content_sort（PbootCMS 用 b.name as sortname）
+ *  - ext_*：來自 ay_content_ext，僅合併有值的字段（null 不返回，避免一堆無用 null）
+ *  - prev/next：限制在同欄目（含子孫欄目）範圍內（PbootCMS getSubScodes 邏輯）
  */
 export async function handleContentDetail(
   db: D1Database,
@@ -114,54 +119,53 @@ export async function handleContentDetail(
     content.visits = (content.visits || 0) + 1;
   }
 
-  // 查詢歸屬欄目信息（名稱、mcode 等，供前端顯示欄目名稱如「疾病知識」）
-  let sortInfo: Record<string, unknown> | null = null;
+  // 查詢歸屬欄目名稱，平鋪到 content 對象（參考 PbootCMS: b.name as sortname, b.filename as sortfilename）
   if (contentScode) {
-    sortInfo = await db.prepare(
-      'SELECT scode, name, subname, mcode, pcode, filename, ico, pic FROM ay_content_sort WHERE scode = ? LIMIT 1',
-    ).bind(contentScode).first();
+    const sortInfo = await db.prepare(
+      'SELECT name, subname, filename, mcode, pcode FROM ay_content_sort WHERE scode = ? LIMIT 1',
+    ).bind(contentScode).first<Record<string, unknown>>();
+    if (sortInfo) {
+      content.sortname = sortInfo.name || '';
+      content.subsortname = sortInfo.subname || '';
+      content.sortfilename = sortInfo.filename || '';
+      content.mcode = sortInfo.mcode || '';
+      content.pcode = sortInfo.pcode || '';
+    }
   }
 
-  // 查詢自定義擴展字段值（ay_content_ext 表，通過 contentid 關聯）
-  let extValues: Record<string, unknown> | null = null;
+  // 查詢自定義擴展字段值，將有值的 ext_* 字段平鋪到 content 對象（參考 PbootCMS: e.* JOIN）
+  // 僅合併非 null 的字段，避免返回一堆無用的 null（如 ext_price/ext_type 等硬編碼列）
   const extRow = await db.prepare(
     'SELECT * FROM ay_content_ext WHERE contentid = ? LIMIT 1',
   ).bind(contentId).first<Record<string, unknown>>();
   if (extRow) {
-    // 只保留 ext_ 前綴的字段（PbootCMS 約定，擴展字段列名以 ext_ 開頭）
-    extValues = {};
     for (const [key, value] of Object.entries(extRow)) {
-      if (key.startsWith('ext_')) {
-        extValues[key] = value;
+      if (key.startsWith('ext_') && value !== null && value !== undefined && value !== '') {
+        content[key] = value;
       }
     }
   }
 
-  // 查詢擴展字段定義（ay_extfield 表，通過欄目 mcode 關聯，讓前端知道字段名稱和類型）
-  let extFieldDefs: unknown[] = [];
-  if (sortInfo && sortInfo.mcode) {
-    const extDefsResult = await db.prepare(
-      "SELECT id, mcode, name, field, type, description, value, scode, required, sorting, status FROM ay_extfield WHERE mcode = ? AND status = '1' ORDER BY sorting ASC, id ASC",
-    ).bind(sortInfo.mcode as string).all();
-    // 過濾適用當前欄目的字段（scode 為空 = 適用所有欄目）
-    extFieldDefs = (extDefsResult.results as Array<Record<string, unknown>>).filter((row) => {
-      const fieldScode = typeof row.scode === 'string' ? row.scode : '';
-      if (!fieldScode) return true;
-      const scodeList = fieldScode.split(',').map((s) => s.trim()).filter(Boolean);
-      return scodeList.includes(contentScode);
-    });
+  // 查詢上一篇/下一篇（限制在同欄目及子孫欄目範圍內，參考 PbootCMS getSubScodes 邏輯）
+  let prev: Record<string, unknown> | null = null;
+  let next: Record<string, unknown> | null = null;
+
+  if (contentScode) {
+    const scodeList = await getDescendantScodes(db, contentScode);
+    if (scodeList.length > 0) {
+      const placeholders = scodeList.map(() => '?').join(',');
+      // 上一篇：同欄目樹範圍內 id 比當前小的最近一篇
+      prev = await db.prepare(
+        `SELECT id, title, filename, date FROM ay_content WHERE id < ? AND status = '1' AND scode IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
+      ).bind(contentId, ...scodeList).first();
+      // 下一篇：同欄目樹範圍內 id 比當前大的最近一篇
+      next = await db.prepare(
+        `SELECT id, title, filename, date FROM ay_content WHERE id > ? AND status = '1' AND scode IN (${placeholders}) ORDER BY id ASC LIMIT 1`,
+      ).bind(contentId, ...scodeList).first();
+    }
   }
 
-  // 查詢上一篇/下一篇（基於已找到的文章 ID，返回 filename 供前端生成連結）
-  const prev = await db.prepare(
-    "SELECT id, title, filename, urlname, date FROM ay_content WHERE id < ? AND status = '1' ORDER BY id DESC LIMIT 1",
-  ).bind(contentId).first();
-
-  const next = await db.prepare(
-    "SELECT id, title, filename, urlname, date FROM ay_content WHERE id > ? AND status = '1' ORDER BY id ASC LIMIT 1",
-  ).bind(contentId).first();
-
-  return okData({ content, sort: sortInfo, extFields: extFieldDefs, extValues, prev, next }, '成功');
+  return okData({ content, prev, next }, '成功');
 }
 
 /** 批量獲取內容列表（靜態打包專用，pagesize 最大 500）

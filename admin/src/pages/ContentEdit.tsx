@@ -663,7 +663,7 @@ function ExtFieldInput({
               <button
                 type="button"
                 onClick={() => onChange('')}
-                className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full transition-transform hover:scale-110"
                 title="移除"
               >
                 <span className="text-xs leading-none">❌</span>
@@ -815,7 +815,7 @@ function ExtFieldInput({
                     <button
                       type="button"
                       onClick={() => removeImage(idx)}
-                      className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                      className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full transition-transform hover:scale-110"
                       title="移除"
                     >
                       <span className="text-xs leading-none">❌</span>
@@ -1699,7 +1699,7 @@ export default function ContentEdit() {
                     <button
                       type="button"
                       onClick={() => updateField('ico', '')}
-                      className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                      className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full transition-transform hover:scale-110"
                       title="移除"
                     >
                       <span className="text-xs leading-none">❌</span>

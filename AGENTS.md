@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.0**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.1**（2026-07-21）
 
 ---
 
@@ -10,7 +10,8 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
-| v1.8.0 | 2026-07-21 | 文章詳情 API 補充欄目名稱（sort）+自定義擴展字段（extFields/extValues）、新增 GET /admin/sorts/all 端點（無需 M202 權限）、修復非授權用戶欄目下拉為空（ContentEdit/Contents 改用 /all 端點） |
+| v1.8.1 | 2026-07-21 | 文章詳情 API 重構：參考 PbootCMS ParserModel.getContent() 平鋪模式，欄目名稱(sortname)+擴展字段(ext_*)直接合併到 content 對象，移除 sort/extFields/extValues 獨立對象，null 字段不返回，prev/next 改為同欄目樹範圍查詢（getSubScodes 邏輯） |
+| v1.8.0 | 2026-07-21 | 新增 GET /admin/sorts/all 端點（無需 M202 權限）、修復非授權用戶欄目下拉為空（ContentEdit/Contents 改用 /all 端點） |
 | v1.7.9 | 2026-07-21 | 公開 API 支持 slug 查詢（GET /contents/:idOrSlug 支持數字 ID 或 filename slug）、新增 GET /contents/all 批量端點（pagesize 最大 500，靜態打包專用）、prev/next 返回 filename 字段 |
 | v1.7.8 | 2026-07-21 | 版本日誌時間戳修正（26 個版本改用 git commit 真實時間戳，修復 v1.6.4 順序倒置問題）、AGENTS.md 新增版本時間戳強制規則、幻燈片默認打開 gid 1 分組 tab |
 | v1.7.7 | 2026-07-21 | 幻燈片分組名稱持久化（新建 ay_slide_group 表，取代 localStorage 方案，所有賬號共享分組名稱）、新增 4 個分組管理 API 端點、種子數據 gid 1=首頁輪播/2=費用一覽/3=大腸鏡檢查、site.ts 新站點同步建表 |

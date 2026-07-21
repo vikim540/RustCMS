@@ -43,11 +43,18 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
-    version: 'v1.8.0',
+    version: 'v1.8.1',
     date: '2026-07-21 16:09:50',
     icon: '📝',
     latest: true,
-    changes: '📝 文章詳情 API 補充欄目名稱+自定義字段 + 欄目下拉權限修復\n\n📋 新增功能\n• GET /contents/:idOrSlug 響應新增 sort 字段（欄目名稱、mcode 等）\n  - 前端可直接獲取歸屬欄目名稱（如「疾病知識」），無需二次查詢\n• GET /contents/:idOrSlug 響應新增 extFields + extValues\n  - extFields：擴展字段定義（ay_extfield，含字段名稱、類型、描述）\n  - extValues：擴展字段值（ay_content_ext，ext_ 前綴字段）\n  - 解決「了解更多 WhatsApp」連結等自定義字段缺失問題\n• 新增 GET /admin/sorts/all 端點（無需 M202 權限，所有登錄用戶可訪問）\n\n🐛 Bug 修復\n• 非授權用戶欄目下拉為空\n  - 根因：ContentEdit/Contents 調用 /admin/sorts（需 M202 權限），非授權用戶被 403 攔截\n  - 修復：改用 /admin/sorts/all（在 PUBLIC_READ_PATHS 白名單中）\n• endoscopyeditor 編輯文章無權限\n  - 根因：同上，欄目下拉載入失敗導致無法選擇欄目',
+    changes: '📝 文章詳情 API 重構：參考 PbootCMS 平鋪模式\n\n📋 變更\n• GET /contents/:idOrSlug 響應結構重構，移除 sort/extFields/extValues 獨立對象\n  - 欄目名稱平鋪到 content.sortname（參考 PbootCMS b.name as sortname）\n  - 欄目 slug 平鋪到 content.sortfilename\n  - 擴展字段值直接平鋪到 content.ext_*（僅有值的字段，null 不返回）\n  - 移除一堆無用的 null 字段（ext_price/ext_type/ext_color 等硬編碼列）\n• prev/next 改為同欄目樹範圍查詢（參考 PbootCMS getSubScodes 邏輯）\n  - 使用遞迴 CTE 取得當前欄目及子孫欄目 scode 列表\n  - 上一篇/下一篇限制在同欄目樹內，不再全局查詢\n\n💡 設計原則\n• 對齊 PbootCMS ParserModel.getContent() 的 JOIN 平鋪模式\n• content 對象即為完整文章數據，前端無需二次組裝',
+  },
+  {
+    version: 'v1.8.0',
+    date: '2026-07-21 16:09:50',
+    icon: '📝',
+    latest: false,
+    changes: '📝 欄目下拉權限修復\n\n📋 新增功能\n• 新增 GET /admin/sorts/all 端點（無需 M202 權限，所有登錄用戶可訪問）\n\n🐛 Bug 修復\n• 非授權用戶欄目下拉為空\n  - 根因：ContentEdit/Contents 調用 /admin/sorts（需 M202 權限），非授權用戶被 403 攔截\n  - 修復：改用 /admin/sorts/all（在 PUBLIC_READ_PATHS 白名單中）\n• endoscopyeditor 編輯文章無權限\n  - 根因：同上，欄目下拉載入失敗導致無法選擇欄目',
   },
   {
     version: 'v1.7.9',
@@ -360,7 +367,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=, max 100/頁)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=, max 500/頁, v1.7.9+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (含欄目名稱sort+擴展字段extFields/extValues, v1.8.0+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (content平鋪sortname+ext_*字段, prev/next同欄目樹, v1.8.1+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
