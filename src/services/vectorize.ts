@@ -271,7 +271,7 @@ export async function semanticSearch(
   }>;
   try {
     const result = await db.prepare(
-      `SELECT id, title, description, scode, date, ico FROM ay_content WHERE id IN (${placeholders}) AND status = '1' AND acode = 'cn'`,
+      `SELECT id, title, description, scode, date, ico FROM ay_content WHERE id IN (${placeholders}) AND status = '1'`,
     )
       .bind(...articleIds)
       .all<{
@@ -329,7 +329,7 @@ export async function reindexAllArticles(
   }>;
   try {
     const result = await db.prepare(
-      "SELECT id, title, content, description, scode FROM ay_content WHERE status = '1' AND acode = 'cn'",
+      "SELECT id, title, content, description, scode FROM ay_content WHERE status = '1'",
     ).all<{
       id: number;
       title: string;

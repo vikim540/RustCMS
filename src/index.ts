@@ -14,7 +14,7 @@
  *   /api/v1/admin/*          - 管理接口 (需 JWT)
  */
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
-import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship, SecretsStoreSecret } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission, hasMenuPermission, reloadUserPermissions } from './services/auth';
@@ -31,7 +31,7 @@ import * as systemService from './services/system';
 import * as notifyService from './services/notify';
 import * as siteService from './services/site';
 import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from './services/ratelimit';
-import { apiCache, clearContentCache, clearConfigCache } from './services/cache';
+import { clearContentCache, clearConfigCache } from './services/cache';
 import * as vectorizeService from './services/vectorize';
 import * as schedulerService from './services/scheduler';
 import { getAllFlags, setFlagEnabled, autoRouteProtection } from './services/flags';
@@ -45,13 +45,13 @@ export interface Env {
   CONFIG_CACHE: KVNamespace;
   TOKEN_BLACKLIST: KVNamespace;
   API_CACHE: KVNamespace;
-  JWT_SECRET: string;
+  JWT_SECRET_STORE: SecretsStoreSecret;    // Secrets Store 異步綁定（await .get() 獲取值）
   API_PREFIX: string;
   JWT_EXPIRE_DAYS: string;
   TZ: string;
   SITE_REGISTRY: string;             // 多站點註冊表 JSON（site_id → {binding, name, domain}）
   CF_ACCOUNT_ID: string;             // Cloudflare Account ID（D1 REST API 創建動態站點用）
-  CF_API_TOKEN: string;              // Cloudflare API Token（Secrets Store 綁定，D1 REST API 用）
+  CF_API_TOKEN_STORE: SecretsStoreSecret;  // Cloudflare API Token（Secrets Store 異步綁定，D1 REST API 用）
   PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string; siteId?: string }>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
@@ -156,7 +156,7 @@ async function requireAuth(c: Context<AppEnv>): Promise<JwtClaims | null> {
   const token = extractToken(authHeader);
   if (!token) return null;
 
-  const claims = await verifyJwt(token, c.env.JWT_SECRET);
+  const claims = await verifyJwt(token, await c.env.JWT_SECRET_STORE.get());
   if (!claims) return null;
 
   // 檢查黑名單
@@ -247,6 +247,31 @@ function requireSuperAdmin(): MiddlewareHandler<AppEnv> {
   };
 }
 
+// ===== 功能開關路由保護（必須在路由定義之前註冊）=====
+// 攔截 FLAG_REGISTRY 中 protectedRoutes 定義的端點，開關關閉時返回 403
+app.use('/api/v1/*', autoRouteProtection());
+
+// ===== Workers Cache 中間件（聲明式邊緣緩存，2026 新功能）=====
+// 為公開 GET 請求設置 Cache-Control 頭，配合 wrangler.jsonc 的 cache.enabled 實現邊緣緩存
+// 管理接口（/api/v1/admin/*）因 Authorization 頭自動被 Workers Cache 繞過
+// 多站點通過 Vary: X-Site-Id 實現緩存分區，防止跨站污染
+app.use('/api/v1/*', async (c, next) => {
+  await next();
+  // 僅對公開 GET、成功響應設置緩存頭
+  if (c.req.method === 'GET' && !c.req.path.startsWith('/api/v1/admin') && c.res.status === 200) {
+    const path = c.req.path;
+    // 搜索結果不緩存（實時性要求高）
+    if (path.includes('/search')) return;
+    // 配置類數據緩存 1 小時，其他公開數據 5 分鐘
+    const ttl = (path.includes('/company') || path.includes('/site') || path.includes('/nav') || path.startsWith('/api/v1/sorts')) ? 3600 : 300;
+    // 設置緩存頭 + Vary 實現多站點分區
+    const headers = new Headers(c.res.headers);
+    headers.set('Cache-Control', `public, max-age=${ttl}, stale-while-revalidate=60`);
+    headers.set('Vary', 'X-Site-Id');
+    c.res = new Response(c.res.body, { status: c.res.status, statusText: c.res.statusText, headers });
+  }
+});
+
 // ===== 健康檢查 =====
 app.get('/api/health', (c) => {
   return okData({
@@ -260,7 +285,7 @@ app.get('/api/health', (c) => {
 app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
   const loginIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
-  return authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, c.env.JWT_SECRET, body, loginIp);
+  return authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, await c.env.JWT_SECRET_STORE.get(), body, loginIp);
 });
 
 // 公開：獲取 Turnstile 配置（site key 是公開的，secret key 不返回）
@@ -924,7 +949,7 @@ app.post('/api/v1/admin/notify/version-check', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return notifyService.handleVersionNotify(siteDB(c), c.env.CONFIG_CACHE, c.env['Flagship-service'], body);
+  return notifyService.handleVersionNotify(siteDB(c), c.env.CONFIG_CACHE, c.env['Flagship-service'], body, currentSiteId(c));
 });
 
 // ===== 後台管理接口 - 站點信息 =====
@@ -1244,14 +1269,11 @@ app.post('/api/v1/admin/vectorize/reindex', async (c) => {
 
 // ===== 功能開關（標準化：註冊表驅動 + API 攔截 + 前端聯動）=====
 
-// 自動路由保護：攔截註冊表中 protectedRoutes 定義的端點
-app.use('/api/v1/*', autoRouteProtection());
-
 // 查詢所有功能開關狀態
 app.get('/api/v1/admin/flags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  const flags = await getAllFlags({ ...c.env, DB: siteDB(c) } as never);
+  const flags = await getAllFlags({ ...c.env, DB: siteDB(c), siteId: currentSiteId(c) } as never);
   return okData(flags, '成功');
 });
 
@@ -1266,7 +1288,7 @@ app.put('/api/v1/admin/flags', async (c) => {
       return err('缺少 key 或 enabled 參數');
     }
 
-    const result = await setFlagEnabled({ ...c.env, DB: siteDB(c) } as never, body.key, body.enabled);
+    const result = await setFlagEnabled({ ...c.env, DB: siteDB(c), siteId: currentSiteId(c) } as never, body.key, body.enabled);
     if (!result.success) {
       return err(result.error || '開關切換失敗', 1005);
     }
@@ -1304,7 +1326,7 @@ app.post('/api/v1/admin/sites/create', requireSuperAdmin(), async (c) => {
   const body = await c.req.json();
   return siteService.handleCreateSite(primaryDB(c), {
     CF_ACCOUNT_ID: c.env.CF_ACCOUNT_ID,
-    CF_API_TOKEN: c.env.CF_API_TOKEN,
+    CF_API_TOKEN: await c.env.CF_API_TOKEN_STORE.get(),
     SITE_REGISTRY: c.env.SITE_REGISTRY,
   }, body);
 });

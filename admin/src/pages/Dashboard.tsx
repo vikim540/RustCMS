@@ -43,10 +43,24 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.0',
+    date: '2026-07-21 18:00:00',
+    icon: '🔐',
+    latest: true,
+    changes: '🔐 架構級優化：密鑰管理 + 邊緣緩存 + 功能開關 + 代碼清理\n\n🔐 Secrets Store 密鑰遷移\n• JWT_SECRET 和 CF_API_TOKEN 從 wrangler secret 遷移至 Cloudflare Secrets Store\n• 異步綁定（await env.X.get()），帳號級別跨 Worker 共享\n• Store ID: aef7c32e26c84aedb4b2a5938128ca23\n\n🚀 Workers Cache 邊緣緩存\n• 取代失敗的 KV API 響應緩存中間件，聲明式邊緣緩存\n• 公開 GET 自動緩存（配置 3600s / 內容 300s），管理接口自動繞過\n• Vary: X-Site-Id 多站點緩存分區\n\n🎯 Flagship 真混合模式\n• getFlagEnabled 優先調用 Flagship getBooleanValue，失敗回退 D1\n• Flagship 模式下開關只讀保護，d1FlagCache 按站點隔離\n\n📍 Smart Placement\n• Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲\n\n🧹 代碼清理\n• 移除 acode=cn 硬編碼（vectorize.ts 兩處）\n• 移除多餘 +08:00/Z 時區後綴（scheduler.ts，依賴 TZ=Asia/Hong_Kong）\n• 清理 apiCache/getCached/setCached 死代碼\n• 刪除過時文檔（docs/00-06）+ 廢棄 Rust 原型 + lucide-react/radix-ui 依賴\n\n🐛 全局錯誤追蹤\n• ErrorBoundary + GlobalErrorToast（左下角固定彈框，手動關閉）\n• 非開發者用戶可直觀看到 bug 信息\n\n🔧 autoRouteProtection 順序修復\n• 功能開關中間件從路由後移至路由前，確保攔截生效',
+  },
+  {
+    version: 'v1.6.4',
+    date: '2026-07-21 14:00:00',
+    icon: '🧩',
+    latest: false,
+    changes: '🧩 前端狀態組件統一化\n\n• LoadingState / EmptyState / ErrorState 三個通用狀態組件\n• 19 個頁面全部替換為組件化狀態展示\n• 消除重複的加載/空數據/錯誤 UI 代碼',
+  },
+  {
     version: 'v1.6.3',
     date: '2026-07-21 10:30:00',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: '🎨 標題顏色選擇器 + 操作者自動記錄 + Slug/發佈時間調整\n\n🎨 標題顏色 (titlecolor)\n• 文章編輯器標題旁新增顏色選擇器，可設置標題字色\n• 數據以 # 色號格式存儲（如 #ff0000）\n• 可一鍵清除顏色（恢復默認）\n\n👤 操作者自動記錄 (create_user/update_user)\n• 創建內容時自動記錄 create_user 為當前登錄用戶\n• 更新內容時自動更新 update_user 為當前操作用戶\n• 前端無需填寫，純後端處理（從 JWT claims 獲取 realname/username）\n\n🔄 Slug + 發佈時間移至基本內容\n• Slug (URL別名) 和發佈時間從高級內容 Tab 移到基本內容 Tab\n\n🗂️ 模型管理清理\n• 僅保留專題和文章兩個模型，刪除其餘 5 個模型',
   },
   {
@@ -289,7 +303,6 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/contents', desc: '新建內容', auth: true },
   { method: 'PUT', path: '/api/v1/admin/contents/:id', desc: '更新內容', auth: true },
   { method: 'GET', path: '/api/v1/admin/models/all', desc: '所有模型', auth: true },
-  { method: 'GET', path: '/api/v1/admin/sorts', desc: '欄目樹 (?mcode=)', auth: true },
   { method: 'GET', path: '/api/v1/admin/media', desc: '媒體列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/upload', desc: '文件上傳 (multipart/form-data)', auth: true },
   { method: 'GET', path: '/api/v1/admin/configs', desc: '系統配置', auth: true },
@@ -1035,7 +1048,7 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                       </td>
                       <td className="px-4 py-3">
                         <code className="font-mono text-foreground">article-semantic-search</code>
-                        <span className="text-muted-foreground mx-2 text-xs">768維 cosine · bge-base-zh-v1.5</span>
+                        <span className="text-muted-foreground mx-2 text-xs">768維 cosine · @cf/baai/bge-base-en-v1.5</span>
                       </td>
                     </tr>
                     <tr className="hover:bg-secondary/50 transition-colors">
@@ -1078,7 +1091,45 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                         <code className="font-mono text-foreground text-xs">mail_enabled</code>
                         <span className="text-muted-foreground mx-1">·</span>
                         <code className="font-mono text-foreground text-xs">webhook_enabled</code>
-                        <span className="text-muted-foreground mx-2 text-xs">D1 回退模式</span>
+                        <span className="text-muted-foreground mx-2 text-xs">真混合模式（Flagship 優先 + D1 回退）</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>🔐</span>
+                          <span>Secrets Store</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground text-xs">JWT_SECRET</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">CF_API_TOKEN</code>
+                        <span className="text-muted-foreground mx-2 text-xs">異步綁定 await get()</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>⚡</span>
+                          <span>Workers Cache</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground text-xs">cache.enabled</code>
+                        <span className="text-muted-foreground mx-2 text-xs">聲明式邊緣緩存（配置 3600s / 內容 300s）</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>📍</span>
+                          <span>Smart Placement</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground text-xs">placement: smart</code>
+                        <span className="text-muted-foreground mx-2 text-xs">自動靠近 D1 數據中心</span>
                       </td>
                     </tr>
                   </tbody>

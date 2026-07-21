@@ -87,14 +87,17 @@ export function findFlagDef(key: string): FlagDef | undefined {
 interface FlagReadEnv {
   DB: D1Database;
   'Flagship-service'?: Flagship;
+  siteId?: string;
 }
 
-/** D1 配置緩存（單次請求內） */
-let d1FlagCache: Record<string, string> | null = null;
+/** D1 配置緩存（按站點隔離，單次請求內有效） */
+const d1FlagCache = new Map<string, Record<string, string>>();
 
-/** 從 D1 讀取所有開關值 */
-async function loadFlagsFromD1(db: D1Database): Promise<Record<string, string>> {
-  if (d1FlagCache) return d1FlagCache;
+/** 從 D1 讀取所有開關值（按站點隔離緩存） */
+async function loadFlagsFromD1(db: D1Database, siteId: string): Promise<Record<string, string>> {
+  const cacheKey = siteId || 'default';
+  const cached = d1FlagCache.get(cacheKey);
+  if (cached) return cached;
   const placeholders = FLAG_REGISTRY.map(() => '?').join(', ');
   const keys = FLAG_REGISTRY.map((f) => f.key);
   const result = await db
@@ -105,26 +108,44 @@ async function loadFlagsFromD1(db: D1Database): Promise<Record<string, string>> 
   for (const row of result.results) {
     map[row.name] = row.value;
   }
-  d1FlagCache = map;
+  d1FlagCache.set(cacheKey, map);
   return map;
 }
 
-/** 重置 D1 緩存（測試用） */
-export function resetFlagCache(): void {
-  d1FlagCache = null;
+/** 重置 D1 緩存（可指定站點，未指定則清除全部） */
+export function resetFlagCache(siteId?: string): void {
+  if (siteId) {
+    d1FlagCache.delete(siteId || 'default');
+  } else {
+    d1FlagCache.clear();
+  }
 }
 
 /**
  * 獲取單個開關狀態（統一入口）
- * 始終使用 D1 存儲，支持後台直接切換（無需 Cloudflare Dashboard）
+ * 混合模式：Flagship 優先（如已配置綁定），D1 回退
+ * - Flagship 模式：由 Cloudflare Dashboard 管理，只讀
+ * - D1 回退模式：由後台設置頁直接切換
  * 值為 '0' = 關閉，其他 = 開啟
  */
 export async function getFlagEnabled(env: FlagReadEnv, key: string): Promise<boolean> {
   const def = findFlagDef(key);
   if (!def) return true; // 未註冊的開關默認開啟
 
-  // 始終從 D1 讀取（支持後台直接管理）
-  const d1Flags = await loadFlagsFromD1(env.DB);
+  const siteId = env.siteId || 'default';
+
+  // 混合模式：Flagship 優先
+  const flagship = env['Flagship-service'];
+  if (flagship) {
+    try {
+      return await flagship.getBooleanValue(key, def.defaultValue);
+    } catch {
+      // Flagship 評估失敗，回退到 D1
+    }
+  }
+
+  // D1 回退
+  const d1Flags = await loadFlagsFromD1(env.DB, siteId);
   const val = d1Flags[key];
   if (val === undefined) return def.defaultValue;
   return val !== '0';
@@ -132,11 +153,12 @@ export async function getFlagEnabled(env: FlagReadEnv, key: string): Promise<boo
 
 /**
  * 批量獲取所有開關狀態（供 API 返回）
+ * managedBy 反映當前使用的是 Flagship 還是 D1 回退
  */
 export async function getAllFlags(env: FlagReadEnv): Promise<
   Array<{ key: string; label: string; description: string; icon: string; enabled: boolean; managedBy: 'flagship' | 'database' }>
 > {
-  const managedBy: 'flagship' | 'database' = 'database';
+  const managedBy: 'flagship' | 'database' = env['Flagship-service'] ? 'flagship' : 'database';
   const results = await Promise.all(
     FLAG_REGISTRY.map(async (def) => ({
       key: def.key,
@@ -162,7 +184,8 @@ export function featureFlagMiddleware(flagKey: string): MiddlewareHandler {
   return async (c, next) => {
     // 多站點：優先使用站點庫，回退到主庫
     const siteDb = (c.get('siteDb') as D1Database | undefined) ?? c.env.DB;
-    const flagEnv = { ...c.env, DB: siteDb } as FlagReadEnv;
+    const siteId = (c.get('siteId') as string | undefined) ?? 'default';
+    const flagEnv = { ...c.env, DB: siteDb, siteId } as FlagReadEnv;
     const enabled = await getFlagEnabled(flagEnv, flagKey);
     if (!enabled) {
       return err('此功能已關閉', 1004);
@@ -180,7 +203,8 @@ export function autoRouteProtection(): MiddlewareHandler {
     const path = c.req.path;
     // 多站點：優先使用站點庫，回退到主庫
     const siteDb = (c.get('siteDb') as D1Database | undefined) ?? c.env.DB;
-    const flagEnv = { ...c.env, DB: siteDb } as FlagReadEnv;
+    const siteId = (c.get('siteId') as string | undefined) ?? 'default';
+    const flagEnv = { ...c.env, DB: siteDb, siteId } as FlagReadEnv;
     for (const def of FLAG_REGISTRY) {
       if (!def.protectedRoutes) continue;
       for (const route of def.protectedRoutes) {
@@ -202,7 +226,8 @@ export function autoRouteProtection(): MiddlewareHandler {
 // ============================================================================
 
 /**
- * 切換開關（後台直接管理，寫入 D1）
+ * 切換開關（D1 回退模式，後台直接管理）
+ * 注意：Flagship 模式下為只讀，此操作僅在 D1 回退模式生效
  * @returns { success, error? }
  */
 export async function setFlagEnabled(
@@ -212,6 +237,13 @@ export async function setFlagEnabled(
 ): Promise<{ success: boolean; error?: string }> {
   const def = findFlagDef(key);
   if (!def) return { success: false, error: '無效的功能開關 key' };
+
+  // Flagship 模式下只讀，拒絕寫入
+  if (env['Flagship-service']) {
+    return { success: false, error: 'Flagship 模式下開關為只讀，請在 Cloudflare Dashboard 管理' };
+  }
+
+  const siteId = env.siteId || 'default';
 
   // 先 UPDATE，無行則 INSERT（name 無 UNIQUE 約束）
   const updateResult = await env.DB.prepare('UPDATE ay_config SET value = ? WHERE name = ?')
@@ -224,8 +256,8 @@ export async function setFlagEnabled(
       .run();
   }
 
-  // 重置緩存
-  resetFlagCache();
+  // 重置該站點的緩存
+  resetFlagCache(siteId);
 
   return { success: true };
 }

@@ -56,14 +56,20 @@ export default function Storage() {
     setTesting(true)
     setTestResult(null)
     try {
-      const res = await api.post<{ connected: boolean }>('/admin/storage/test')
+      // 測試連接返回 connected + endpoint + bucket（均為後端回顯的實際配置）
+      const res = await api.post<{ connected: boolean; endpoint?: string; bucket?: string }>('/admin/storage/test')
       if (res.code === 0) {
-        setTestResult({ ok: true, msg: `連接成功！Endpoint: ${(res.data as any)?.endpoint}, Bucket: ${(res.data as any)?.bucket}` })
+        const d = res.data
+        setTestResult({
+          ok: true,
+          msg: `連接成功！Endpoint: ${d?.endpoint ?? '(未知)'}, Bucket: ${d?.bucket ?? '(未知)'}`,
+        })
       } else {
         setTestResult({ ok: false, msg: res.msg || '連接失敗' })
       }
-    } catch (e: any) {
-      setTestResult({ ok: false, msg: e?.message || '連接失敗' })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '連接失敗'
+      setTestResult({ ok: false, msg })
     } finally {
       setTesting(false)
     }
@@ -93,8 +99,9 @@ export default function Storage() {
       } else {
         setUploadResult({ ok: false, msg: json.msg || '上傳失敗' })
       }
-    } catch (e: any) {
-      setUploadResult({ ok: false, msg: e?.message || '上傳失敗' })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '上傳失敗'
+      setUploadResult({ ok: false, msg })
     } finally {
       setUploading(false)
     }

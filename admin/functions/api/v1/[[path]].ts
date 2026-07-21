@@ -46,7 +46,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   newResponse.headers.set('Access-Control-Allow-Origin', '*');
   newResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+  // 前端實際發送 X-Site-Id 頭（多站點路由），需明確放行；保留 X-API-Key 以兼容舊客戶端
+  newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Site-Id, X-API-Key');
 
   return newResponse;
 };

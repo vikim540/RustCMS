@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { api, clearToken, getUserInfo, clearUserInfo, setPermissionDeniedCallback, setUserInfo, getCurrentSiteId, getCurrentSiteName, setCurrentSite, getCachedSites, setCachedSites, clearCurrentSite, type UserInfo, type SiteInfo } from '../lib/api'
+import { api, clearToken, getUserInfo, clearUserInfo, setPermissionDeniedCallback, setUserInfo, getCurrentSiteId, setCachedSites, clearCurrentSite, type UserInfo, type SiteInfo } from '../lib/api'
 import { cn } from '../lib/utils'
 import { FeatureFlagProvider } from '../hooks/useFeatureFlags'
+import { SiteProvider, useSite } from '../contexts/SiteContext'
 
 /** 模型數據結構 */
 interface Model {
@@ -133,8 +134,19 @@ const NAV_GROUPS: NavGroup[] = [
 ]
 
 export default function Layout() {
+  // SiteProvider 包裹內層組件，提供站點上下文 + 切換過渡覆蓋層
+  return (
+    <SiteProvider>
+      <LayoutInner />
+    </SiteProvider>
+  )
+}
+
+function LayoutInner() {
   const navigate = useNavigate()
   const location = useLocation()
+  // 站點上下文（取代本地 useState，集中管理站點狀態 + 切換過渡動畫）
+  const { sites, setSites, currentSiteName, currentSiteId, updateCurrentSite, switchSite } = useSite()
   // 預設所有分組收起，僅「文章內容」展開（文案日常工作區域）
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(NAV_GROUPS.filter((g) => g.title !== '文章內容').map((g) => g.title)),
@@ -143,9 +155,8 @@ export default function Layout() {
   const [models, setModels] = useState<Model[]>([])
   // 當前用戶信息（用於側邊欄權限過濾）
   const [userInfo, setUserInfoState] = useState(() => getUserInfo())
-  // 多站點：可訪問站點列表 + 當前站點名稱 + 下拉開關
-  const [sites, setSites] = useState<SiteInfo[]>(() => getCachedSites())
-  const [currentSiteName, setCurrentSiteName] = useState(() => getCurrentSiteName())
+  // 個人信息是否已從後端刷新完成（未刷新前非超管顯示骨架屏，避免權限閃現）
+  const [profileLoaded, setProfileLoaded] = useState(false)
   const [siteDropdownOpen, setSiteDropdownOpen] = useState(false)
   const siteDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -182,11 +193,9 @@ export default function Layout() {
         const currentId = getCurrentSiteId()
         const found = siteList.find((s) => s.siteId === currentId)
         if (!found && siteList.length > 0) {
-          setCurrentSite(siteList[0].siteId, siteList[0].name)
-          setCurrentSiteName(siteList[0].name)
+          updateCurrentSite(siteList[0].siteId, siteList[0].name)
         } else if (found) {
-          setCurrentSiteName(found.name)
-          setCurrentSite(found.siteId, found.name)
+          updateCurrentSite(found.siteId, found.name)
         }
       })
       .catch(() => {
@@ -205,16 +214,14 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  /** 切換站點：保存到 localStorage 並刷新頁面 */
+  /** 切換站點：由 SiteContext 處理（更新狀態 + 過渡動畫 + 刷新頁面） */
   function handleSiteSwitch(site: SiteInfo) {
     setSiteDropdownOpen(false)
-    if (site.siteId === getCurrentSiteId()) return
-    setCurrentSite(site.siteId, site.name)
-    // 刷新頁面以重新載入新站點的數據
-    window.location.reload()
+    switchSite(site)
   }
 
   // ─── 掛載時拉取最新用戶信息（刷新權限，解決角色權限變更後 JWT 過時的問題）───
+  // 刷新完成後設置 profileLoaded=true，讓骨架屏消失；失敗也標記已載入（降級使用緩存）
   useEffect(() => {
     api
       .get<{
@@ -226,7 +233,10 @@ export default function Layout() {
         permissions: string[]
       }>('/auth/profile')
       .then((res) => {
-        if (!res.data) return
+        if (!res.data) {
+          setProfileLoaded(true)
+          return
+        }
         const freshInfo: UserInfo = {
           id: res.data.id,
           ucode: res.data.ucode,
@@ -244,9 +254,12 @@ export default function Layout() {
           setUserInfo(freshInfo)
           setUserInfoState(freshInfo)
         }
+        setProfileLoaded(true)
       })
       .catch(() => {
         // 靜默處理，使用 localStorage 中的緩存
+        // 即使刷新失敗也標記為已載入，讓骨架屏消失（降級使用緩存權限）
+        setProfileLoaded(true)
       })
   }, [])
 
@@ -269,8 +282,8 @@ export default function Layout() {
 
   /** 檢查用戶是否有該導航項目的訪問權限 */
   const hasNavPermission = (item: NavItem): boolean => {
-    // 用戶信息未載入時放行（避免空白側邊欄）
-    if (!userInfo) return true
+    // 用戶信息未載入時隱藏所有非超管項目（避免權限閃現：舊權限先顯示後被過濾）
+    if (!userInfo) return false
     // 超級管理員看到所有菜單
     if (userInfo.isSuper) return true
     // 內容模型列表項目：統一使用 M201 (文章列表) 權限控制
@@ -355,14 +368,14 @@ export default function Layout() {
                   onClick={() => handleSiteSwitch(site)}
                   className={cn(
                     'w-full flex items-center gap-2 px-6 py-2.5 text-sm text-left transition-colors',
-                    site.siteId === getCurrentSiteId()
+                    site.siteId === currentSiteId
                       ? 'bg-secondary text-foreground font-medium'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
                 >
                   <span>{site.isPrimary ? '⭐' : '🌐'}</span>
                   <span className="truncate">{site.name}</span>
-                  {site.siteId === getCurrentSiteId() && <span className="ml-auto text-xs">✓</span>}
+                  {site.siteId === currentSiteId && <span className="ml-auto text-xs">✓</span>}
                 </button>
               ))}
             </div>
@@ -386,6 +399,19 @@ export default function Layout() {
             儀表板
           </NavLink>
 
+          {/* 分組導航 — 非超管在個人信息刷新前顯示骨架屏，避免權限閃現 */}
+          {!profileLoaded && !userInfo?.isSuper ? (
+            <div className="px-6 py-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 animate-pulse">
+                  <div className="w-4 h-4 bg-slate-200 rounded shrink-0"></div>
+                  <div className="flex-1 h-4 bg-slate-200 rounded"></div>
+                </div>
+              ))}
+              <p className="text-xs text-slate-300 pt-2">載入選單中...</p>
+            </div>
+          ) : (
+            <>
           {/* 分組導航 */}
           {filteredNavGroups.map((group) => {
             const isCollapsed = collapsedGroups.has(group.title)
@@ -434,6 +460,8 @@ export default function Layout() {
               </div>
             )
           })}
+            </>
+          )}
         </nav>
         <div className="p-4 border-t">
           {/* 當前用戶信息 */}

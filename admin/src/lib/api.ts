@@ -1,6 +1,14 @@
 /**
  * API 客戶端 - JWT 認證 + 統一錯誤處理
+ *
+ * v1.6.5+ 改進：
+ * - 所有錯誤（網絡層、401、業務碼非 0）透過 showGlobalError 推送到左下角全局通知
+ * - 401 改用 CustomEvent('unauthorized') 通知 App.tsx，由 React Router navigate 跳轉（更平滑，不整頁刷新）
+ * - isRedirectingToLogin 鎖 3 秒後自動解鎖，避免鎖死
+ * - 403 權限錯誤沿用 Layout 的 permissionDeniedCallback（已在頂部顯示 toast，不重複彈框）
  */
+
+import { showGlobalError } from '../components/GlobalErrorToast'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 
@@ -127,6 +135,11 @@ export function setPermissionDeniedCallback(cb: ((msg: string) => void) | null):
   permissionDeniedCallback = cb
 }
 
+/** 判斷當前是否在登錄頁（登錄頁的 401 由頁面自身處理，不重複彈全局通知） */
+function isOnLoginPage(): boolean {
+  return window.location.pathname.replace(/\/+$/, '') === '/login'
+}
+
 /** API 請求封裝 */
 async function request<T>(
   path: string,
@@ -140,23 +153,48 @@ async function request<T>(
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  // 網絡層錯誤防護：fetch 本身失敗（斷網、DNS 失敗、CORS 阻擋等）
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  } catch (networkError) {
+    const errMsg = networkError instanceof Error ? networkError.message : String(networkError)
+    showGlobalError(
+      '網絡連線錯誤',
+      '無法連接到伺服器，請檢查網路連線後重試。',
+      `請求: ${options.method || 'GET'} ${path}\n錯誤: ${errMsg}`,
+    )
+    throw new Error(`網絡連線錯誤: ${errMsg}`)
+  }
 
-  // 401 = 未認證/token過期 → 清除登入狀態並重定向到 login
+  // 401 = 未認證/token過期 → 清除登入狀態並通知 App.tsx 跳轉到 login
   if (res.status === 401) {
     clearToken()
     clearUserInfo()
-    const onLoginPage = window.location.pathname.replace(/\/+$/, '') === '/login'
-    if (!onLoginPage && !isRedirectingToLogin) {
+    const onLogin = isOnLoginPage()
+    // 觸發跳轉（僅一次，用鎖防抖）
+    if (!onLogin && !isRedirectingToLogin) {
       isRedirectingToLogin = true
-      window.location.href = '/login'
+      // 使用 CustomEvent 通知 App.tsx 中的監聯器，通過 React Router navigate 跳轉
+      // 比 window.location.href 更平滑，不會整頁刷新，保留路由狀態
+      window.dispatchEvent(new CustomEvent('unauthorized'))
+      // 3 秒後自動解鎖：navigate 不會刷新頁面，鎖需手動重置以支持後續會話
+      setTimeout(() => {
+        isRedirectingToLogin = false
+      }, 3000)
     }
-    throw new Error('登錄已過期,請重新登錄')
+    const errMsg = '登錄已過期,請重新登錄'
+    // 登錄頁的 401 由頁面自身顯示錯誤（如密碼錯誤），不重複彈全局通知
+    if (!onLogin) {
+      showGlobalError('登錄已過期', errMsg, `請求路徑: ${path}\nHTTP 401 Unauthorized`)
+    }
+    throw new Error(errMsg)
   }
 
   // 403 = 權限拒絕 → 不登出，僅提示無權限
+  // 沿用 Layout 的 permissionDeniedCallback（已在頂部顯示 toast），不重複彈全局通知
   if (res.status === 403) {
-    const json: ApiResponse<T> = await res.json()
+    const json = await res.json().catch(() => ({ msg: '無權限訪問此功能' })) as ApiResponse<T>
     const msg = json.msg || '無權限訪問此功能'
     // 觸發全局回調（Layout 會顯示 toast 提示）
     if (permissionDeniedCallback) {
@@ -167,7 +205,14 @@ async function request<T>(
 
   const json: ApiResponse<T> = await res.json()
   if (json.code !== 0) {
-    throw new Error(json.msg || '請求失敗')
+    const msg = json.msg || '請求失敗'
+    // 業務錯誤推送到全局通知，讓非開發者用戶也能看到（許多頁面的 catch 會靜默吞掉錯誤）
+    showGlobalError(
+      '請求失敗',
+      msg,
+      `請求: ${options.method || 'GET'} ${path}\n錯誤碼: ${json.code}`,
+    )
+    throw new Error(msg)
   }
   return json
 }

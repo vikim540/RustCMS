@@ -10,7 +10,9 @@ UPDATE ay_config SET value = 'smtp.139.com' WHERE name = 'smtp_server' AND (valu
 UPDATE ay_config SET value = '465' WHERE name = 'smtp_port' AND (value = '' OR value IS NULL OR value = '25');
 UPDATE ay_config SET value = '1' WHERE name = 'smtp_ssl' AND (value = '' OR value IS NULL OR value = '0');
 UPDATE ay_config SET value = 'vikim_lee@139.com' WHERE name = 'smtp_username' AND (value = '' OR value IS NULL);
-UPDATE ay_config SET value = '421e5bff8524df1ee500' WHERE name = 'smtp_password' AND (value = '' OR value IS NULL);
+-- SMTP 密碼已遷移到 Cloudflare Secrets Store 管理，不再寫入數據庫遷移文件
+-- 此處僅在值為空時顯式設置為空字符串，保持配置行存在但不存儲明文密碼
+UPDATE ay_config SET value = '' WHERE name = 'smtp_password' AND (value = '' OR value IS NULL);
 
 -- 設置郵件服務配置 (mail_provider 默認 mailchannels, 發件人使用 SMTP 用戶名)
 UPDATE ay_config SET value = 'mailchannels' WHERE name = 'mail_provider' AND (value = '' OR value IS NULL);

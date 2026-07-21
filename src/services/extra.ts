@@ -616,7 +616,7 @@ export async function handleSubmitMessage(
   db: D1Database,
   kv: KVNamespace | null,
   ctx: ExecutionContext | null,
-  flags: Flagship | null,
+  flags: Flagship | undefined,
   userIp: string,
   userAgent: string,
   sourceUrl: string,
@@ -672,7 +672,7 @@ export async function handleSubmitMessage(
       { label: '手機', value: body.mobile || '' },
       { label: '留言內容', value: content },
     ];
-    const notifyPromise = triggerNotify(db, kv, flags, 'message', '在線留言', fields, userIp, userAgent, sourceUrl);
+    const notifyPromise = triggerNotify(db, kv, flags, 'message', '在線留言', fields, userIp, userAgent, sourceUrl, acode);
     if (ctx) {
       ctx.waitUntil(notifyPromise);
     } else {

@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.6.4**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.0**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.7.0 | 2026-07-21 | Secrets Store 遷移、Flagship 真混合模式、Workers Cache 邊緣緩存、Smart Placement、acode/時區清理、全局錯誤 Toast、代碼清理 |
 | v1.6.4 | 2026-07-21 | 前端狀態組件統一化（LoadingState/EmptyState/ErrorState），19 個頁面全部組件化 |
 | v1.6.3 | 2026-07-21 | 標題顏色選擇器、操作者自動記錄、AGENTS.md 新增 Rust 優先約束 |
 | v1.6.2 | 2026-07-20 | 父欄目文章列表修復、公開 API 字段補全、標籤輸入器升級、Slug 去重 |
@@ -92,12 +93,11 @@ Cloudflarerustcms/
 │   │   └── pages/              # 24 個頁面組件
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法）
-├── docs/                       # 設計文檔（00-06）
-└── wrangler.jsonc              # Worker 配置（bindings + cron）
+├── migrations/                 # D1 遷移（冪等語法，當前 0001-0011）
+└── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```
 
-> **注意**：`src/model/`、`src/service/`、`src/util/`（`.rs` 文件）為早期 Rust 原型遺留，已廢棄，當前使用 `src/services/` 和 `src/utils/`（`.ts`）。
+> **注意**：早期 Rust 原型遺留（`src/model/`、`src/service/`、`src/util/`、`Cargo.toml`）已於 v1.7.0 清理刪除。當前使用 `src/services/` 和 `src/utils/`（`.ts`）。
 
 ---
 
@@ -112,7 +112,10 @@ Cloudflarerustcms/
 | Vectorize | `article-semantic-search` | 768 維 cosine，多語言語義搜索 |
 | Workers AI | `@cf/baai/bge-base-en-v1.5` | XLM-RoBERTa 嵌入模型，支持中文 |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min) / `ADMIN_API_LIMIT`(300/min) / `LOGIN_LIMIT`(5/min) / `FORM_LIMIT`(1/10s) | 零網絡開銷 |
-| Flagship | `Flagship-service`（app: `Rustcms-service`） | 混合模式：Flagship UUID 配置則只讀，未配置則 D1 回退 |
+| Flagship | `Flagship-service`（app: `Rustcms-service`） | 真混合模式：Flagship 優先（`getBooleanValue`），失敗回退 D1；Flagship 模式下開關只讀 |
+| Secrets Store | `default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`） | 異步綁定（`await env.X.get()`），存儲 JWT_SECRET + CF_API_TOKEN |
+| Workers Cache | `cache.enabled: true` | 聲明式邊緣緩存，公開 GET 自動緩存（配置 3600s / 內容 300s），Vary: X-Site-Id 多站點分區 |
+| Smart Placement | `placement.mode: smart` | Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲 |
 | Pages | `cms-admin` | 管理後台 SPA，域名 `cms.cmermedical.com.hk` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms` | 零延遲內部通信，前端通過 `functions/api/v1/[[path]].ts` 代理 |
 | GitHub | `https://github.com/vikim540/RustCMS.git` | 賬號 `waicun_lee@outlook.com`（Account ID: `f5d4e94cb23f69f8ae69baedff94f2ba`） |
@@ -237,10 +240,14 @@ Cloudflarerustcms/
 - 流程：搜索詞 → Workers AI 嵌入 → Vectorize 查詢 → 閾值 0.5 過濾 → D1 取完整文章
 - 重建索引：`POST /api/v1/admin/vectorize/reindex`
 
-### KV 緩存
+### 邊緣緩存（Workers Cache，v1.7.0）
 
-- 僅緩存公開 GET 請求：內容列表 TTL 300s，配置數據 TTL 3600s
-- 內容 CRUD 後 `clearContentCache`，配置更新後 `clearConfigCache`
+- v1.7.0 起：用 Cloudflare Workers Cache（聲明式邊緣緩存）取代原 KV API 響應緩存中間件
+- 公開 GET 請求自動邊緣緩存：配置類（`/company`、`/site`、`/nav`、`/sorts`）TTL 3600s，其他公開數據 TTL 300s，`stale-while-revalidate=60`
+- 管理接口（`/api/v1/admin/*`）因 Authorization 頭自動被 Workers Cache 繞過
+- 多站點通過 `Vary: X-Site-Id` 實現緩存分區，防止跨站污染
+- 搜索結果（`/api/v1/search`）不緩存（實時性要求高）
+- `clearContentCache` / `clearConfigCache` 保留用於清除 KV 中殘留的配置緩存條目（`config:all` 等）
 
 ### 香港本地化（v1.5.4）
 
@@ -254,7 +261,20 @@ Cloudflarerustcms/
 - **配置**：DB `ay_config` 表 3 條記錄（sorting 35-37，安全配置分組）— `turnstile_enabled`（開關）/ `turnstile_site_key`（站點密鑰）/ `turnstile_secret_key`（密鑰）
 - **後端**：`src/services/auth.ts` `verifyTurnstile()` 調用 Cloudflare siteverify API 驗證 token；`handleLogin` 開關開啟時強制驗證（網絡異常時放行避免故障）
 - **前端**：`Login.tsx` 動態載入 Turnstile 腳本（explicit 模式），掛載時拉取 `/auth/turnstile-config` 判斷是否啟用，登錄失敗自動 reset widget
-- **公開端點**：`GET /api/v1/auth/turnstile-config` 返回 `{ enabled, siteKey }`（secret key 不暴露）
+- **公開端點**：`GET /api/v1/auth/turnstile-config` 返回 `{ enabled, siteKey }`（secret key 不返回）
+
+### Secrets Store 密鑰管理（v1.7.0）
+
+- **架構**：JWT_SECRET 和 CF_API_TOKEN 從 `wrangler secret` 遷移至 Cloudflare Secrets Store（帳號級別，跨 Worker 共享）
+- **綁定**：wrangler.jsonc `secrets_store_secrets` 配置，異步訪問（`await env.JWT_SECRET_STORE.get()`），與原同步 `env.JWT_SECRET` 不兼容
+- **Store**：`default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`），CLI 管理 `wrangler secrets-store secret list/create/delete --store-id <id>`
+- **代碼變更**：`requireAuth`、`handleLogin`、`handleCreateSite` 均改為 `await c.env.JWT_SECRET_STORE.get()` / `await c.env.CF_API_TOKEN_STORE.get()`
+
+### 全局錯誤追蹤（v1.7.0）
+
+- **ErrorBoundary**：`admin/src/components/ErrorBoundary.tsx` 包裹所有路由，捕獲 React 渲染異常顯示 fallback UI
+- **GlobalErrorToast**：`admin/src/components/GlobalErrorToast.tsx` 固定左下角紅色邊框彈框，手動關閉，用於測試階段非開發者用戶反饋 bug
+- **集成**：`api.ts` 攔截非 401 錯誤調用 `showGlobalError(title, message, detail?)`，401 通過 `CustomEvent` 觸發導航至 login
 
 ---
 

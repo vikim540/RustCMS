@@ -2,11 +2,22 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "rust-cms",
   "main": "src/index.ts",
-  "compatibility_date": "2025-07-01",
+  "compatibility_date": "2026-07-14",
 
   // Worker 僅作為 Pages cms-admin 的內部 Service Binding，不暴露任何公網 URL
   "workers_dev": false,
   "preview_urls": false,
+
+  // Smart Placement：自動將 Worker 部署到靠近 D1 數據庫的最優位置（APAC）
+  "placement": {
+    "mode": "smart"
+  },
+
+  // Workers Cache（2026 新功能）：聲明式邊緣緩存，命中時零 Worker 執行
+  // 支持 Service Binding 調用、分層緩存、請求合併、Authorization 自動繞過
+  "cache": {
+    "enabled": true
+  },
 
   // 多站點 D1 綁定（全部 APAC 地區）
   // DB = 主庫 endoscopy-cms（認證/用戶/角色/菜單等全局數據，向後兼容）
@@ -42,6 +53,21 @@
     {
       "binding": "API_CACHE",
       "id": "69737778474044ada68b6f34db79f8cb"
+    }
+  ],
+
+  // Secrets Store（帳戶級機密管理，RBAC 保護，異步 get() 訪問）
+  // Store: default_secrets_store (ID: aef7c32e26c84aedb4b2a5938128ca23)
+  "secrets_store_secrets": [
+    {
+      "binding": "JWT_SECRET_STORE",
+      "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
+      "secret_name": "JWT_SECRET"
+    },
+    {
+      "binding": "CF_API_TOKEN_STORE",
+      "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
+      "secret_name": "CF_API_TOKEN"
     }
   ],
 

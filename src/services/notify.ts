@@ -236,13 +236,14 @@ async function loadConfigsFromDB(db: D1Database): Promise<Record<string, string>
 export async function triggerNotify(
   db: D1Database,
   kv: KVNamespace | null,
-  flags: Flagship | null,
+  flags: Flagship | undefined,
   category: 'message' | 'form' | 'comment',
   formName: string,
   fields: NotifyField[],
   ip: string,
   userAgent: string,
   sourceUrl?: string,
+  siteId?: string,
 ): Promise<void> {
   try {
     // 始終從 D1 讀取配置 (不依賴 KV 緩存, 確保 webhook/mail 配置最新)
@@ -253,7 +254,7 @@ export async function triggerNotify(
     const detailUrl = buildAdminUrl(site.domain, category);
 
     // 功能開關：統一使用 flags.ts 標準化服務
-    const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined };
+    const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined, siteId };
     const mailEnabled = await getFlagEnabled(flagEnv, 'mail_enabled');
     const webhookEnabled = await getFlagEnabled(flagEnv, 'webhook_enabled');
 
@@ -346,8 +347,9 @@ export async function handleTestWebhook(db: D1Database, kv: KVNamespace, body: {
 export async function handleVersionNotify(
   db: D1Database,
   kv: KVNamespace,
-  flags: Flagship | null,
+  flags: Flagship | undefined,
   payload: { version: string; date: string; changes: string; icon?: string },
+  siteId?: string,
 ): Promise<Response> {
   const { version, changes, icon } = payload;
 
@@ -362,7 +364,7 @@ export async function handleVersionNotify(
   if (!webhookUrl) return okData({ skipped: true, reason: 'webhook_url 未配置' }, '成功');
 
   // 檢查 webhook 總開關
-  const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined };
+  const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined, siteId };
   const webhookEnabled = await getFlagEnabled(flagEnv, 'webhook_enabled');
   if (!webhookEnabled) return okData({ skipped: true, reason: 'webhook 未啟用' }, '成功');
 
