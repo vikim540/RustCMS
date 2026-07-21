@@ -223,50 +223,56 @@ export async function handleUpdateContent(
   body: Record<string, unknown>,
   operator: string = '',
 ): Promise<Response> {
-  const now = nowStr();
+  try {
+    const now = nowStr();
 
-  const allowedFields = [
-    'title', 'titlecolor', 'subtitle', 'filename', 'scode', 'subscode',
-    'author', 'source', 'outlink', 'date', 'ico', 'pics', 'picstitle',
-    'content', 'tags', 'enclosure', 'keywords', 'description',
-    'sorting', 'status', 'istop', 'isrecommend', 'isheadline',
-    'gtype', 'gid', 'gnote', 'urlname',
-  ];
+    const allowedFields = [
+      'title', 'titlecolor', 'subtitle', 'filename', 'scode', 'subscode',
+      'author', 'source', 'outlink', 'date', 'ico', 'pics', 'picstitle',
+      'content', 'tags', 'enclosure', 'keywords', 'description',
+      'sorting', 'status', 'istop', 'isrecommend', 'isheadline',
+      'gtype', 'gid', 'gnote', 'urlname',
+    ];
 
-  const sets: string[] = [];
-  const binds: (string | number)[] = [];
+    const sets: string[] = [];
+    const binds: (string | number)[] = [];
 
-  for (const field of allowedFields) {
-    if (body[field] !== undefined) {
-      const val = body[field];
-      // sorting 為整數類型，其餘為字串
-      if (field === 'sorting' && typeof val === 'number') {
-        sets.push(`${field} = ?`);
-        binds.push(String(val));
-      } else if (typeof val === 'string') {
-        sets.push(`${field} = ?`);
-        binds.push(val);
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        const val = body[field];
+        // sorting 為整數類型，其餘為字串
+        if (field === 'sorting' && typeof val === 'number') {
+          sets.push(`${field} = ?`);
+          binds.push(String(val));
+        } else if (typeof val === 'string') {
+          sets.push(`${field} = ?`);
+          binds.push(val);
+        }
+        // null/undefined/object 類型跳過，避免寫入異常
       }
     }
-  }
 
-  if (sets.length > 0) {
-    sets.push('update_user = ?');
-    binds.push(operator);
-    sets.push('update_time = ?');
-    binds.push(now);
-    binds.push(id);
-    const sql = `UPDATE ay_content SET ${sets.join(', ')} WHERE id = ?`;
-    await db.prepare(sql).bind(...binds).run();
-  }
+    if (sets.length > 0) {
+      sets.push('update_user = ?');
+      binds.push(operator);
+      sets.push('update_time = ?');
+      binds.push(now);
+      binds.push(id);
+      const sql = `UPDATE ay_content SET ${sets.join(', ')} WHERE id = ?`;
+      await db.prepare(sql).bind(...binds).run();
+    }
 
-  // 保存擴展字段 (如果存在且為對象)
-  const extFields = body.ext_fields;
-  if (extFields && typeof extFields === 'object' && Object.keys(extFields).length > 0) {
-    await handleSaveContentExt(db, id, extFields as Record<string, unknown>);
-  }
+    // 保存擴展字段 (如果存在且為對象)
+    const extFields = body.ext_fields;
+    if (extFields && typeof extFields === 'object' && Object.keys(extFields).length > 0) {
+      await handleSaveContentExt(db, id, extFields as Record<string, unknown>);
+    }
 
-  return ok('內容更新成功');
+    return ok('內容更新成功');
+  } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    return err(`內容更新失敗: ${errorMsg}`, 1005);
+  }
 }
 
 /** 刪除內容 (軟刪除到回收站: status='-1') */

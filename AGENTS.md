@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.1**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.2**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.7.2 | 2026-07-21 | Service Binding 配置修復（admin/wrangler.jsonc 補回 services 綁定，解決 PUT 500）、全鏈路錯誤追蹤（後端 try/catch + Pages Function detail 字段 + api.ts 500/!res.ok 處理 + GlobalErrorToast 📋 一鍵複製按鈕 + 默認展開技術詳情） |
 | v1.7.1 | 2026-07-21 | 統一❌emoji關閉按鈕、tab切換編輯器內容丟失修復、壓縮卡0%修復、編輯器圖片上傳三合一優化（直開媒體庫+粘貼批量壓縮）、wrangler warning修復 |
 | v1.7.0 | 2026-07-21 | Secrets Store 遷移、Flagship 真混合模式、Workers Cache 邊緣緩存、Smart Placement、acode/時區清理、全局錯誤 Toast、代碼清理 |
 | v1.6.4 | 2026-07-21 | 前端狀態組件統一化（LoadingState/EmptyState/ErrorState），19 個頁面全部組件化 |

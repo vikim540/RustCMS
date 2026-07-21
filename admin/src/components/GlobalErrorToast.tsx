@@ -89,10 +89,44 @@ function formatTime(iso: string): string {
   }
 }
 
-/** 單個錯誤卡片（支持展開/折疊技術詳情） */
+/** 單個錯誤卡片（支持展開/折疊技術詳情 + 一鍵複製） */
 function ErrorCard({ entry }: { entry: ErrorEntry }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
+  const [copied, setCopied] = useState(false)
   const hasDetail = Boolean(entry.detail)
+
+  /** 一鍵複製完整錯誤信息到剪貼板 */
+  const copyErrorInfo = async () => {
+    const fullInfo = [
+      `=== 錯誤報告 ===`,
+      `標題: ${entry.title}`,
+      `描述: ${entry.message}`,
+      `時間: ${entry.timestamp}`,
+      hasDetail ? `技術詳情:\n${entry.detail}` : '',
+    ].filter(Boolean).join('\n')
+
+    try {
+      await navigator.clipboard.writeText(fullInfo)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // fallback: 創建臨時 textarea 複製
+      const textarea = document.createElement('textarea')
+      textarea.value = fullInfo
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch {
+        // 複製失敗，靜默處理
+      }
+      document.body.removeChild(textarea)
+    }
+  }
 
   return (
     <div className="border border-red-500/60 bg-slate-900/95 text-slate-100 rounded-lg shadow-2xl shadow-red-900/30 w-80 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -103,6 +137,15 @@ function ErrorCard({ entry }: { entry: ErrorEntry }) {
           <p className="text-sm font-semibold text-red-200 truncate">{entry.title}</p>
           <p className="text-xs text-slate-300 mt-0.5 break-words">{entry.message}</p>
         </div>
+        {/* 一鍵複製按鈕 */}
+        <button
+          onClick={copyErrorInfo}
+          className="text-slate-400 hover:text-green-400 text-sm leading-none shrink-0 px-1 transition-colors"
+          aria-label="複製錯誤信息"
+          title="一鍵複製完整錯誤信息"
+        >
+          {copied ? '✅' : '📋'}
+        </button>
         <button
           onClick={() => dismissError(entry.id)}
           className="text-slate-400 hover:text-white text-sm leading-none shrink-0 px-1"
@@ -113,7 +156,7 @@ function ErrorCard({ entry }: { entry: ErrorEntry }) {
         </button>
       </div>
 
-      {/* 技術詳情（可折疊） */}
+      {/* 技術詳情（可折疊，默認展開） */}
       {hasDetail && (
         <div className="border-t border-red-500/20">
           <button

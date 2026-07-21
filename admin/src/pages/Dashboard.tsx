@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.2',
+    date: '2026-07-21 11:44:12',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 錯誤追蹤系統升級 + Service Binding 配置修復\n\n🐛 PUT /admin/contents/:id 返回 500 修復\n• 根因：admin/wrangler.jsonc 創建時缺少 services 綁定配置，部署後覆蓋了 Dashboard 中的 Service Binding\n• 修復：wrangler.jsonc 添加 services: [{ binding: "API", service: "rust-cms" }]\n\n🛡️ 後端 handleUpdateContent 添加 try/catch\n• SQL 執行失敗時返回有意義的錯誤信息（包含具體錯誤原因），不再返回裸 500\n\n🔗 Pages Function 錯誤處理增強\n• 添加 try/catch 捕獲 Service Binding fetch 異常\n• 錯誤響應增加 detail 字段，包含請求方法、路徑、時間戳、異常詳情\n\n📡 前端 api.ts 錯誤處理升級\n• 新增 HTTP 500 專門處理分支，解析後端 detail 字段\n• 新增其他非 200 狀態碼處理（404/429/502/503 等）\n• res.json() 失敗時有 fallback，不再因非 JSON 響應崩潰\n\n📋 GlobalErrorToast 一鍵複製功能\n• 每個錯誤卡片新增 📋 複製按鈕，一鍵複製完整錯誤信息（標題+描述+時間+技術詳情）\n• 技術詳情默認展開（不再需要手動點擊）\n• 複製成功顯示 ✅ 反饋\n• 錯誤信息包含：請求方法、路徑、HTTP 狀態碼、錯誤碼、後端詳情',
+  },
+  {
     version: 'v1.7.1',
     date: '2026-07-21 11:31:19',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: '🎨 前端細節優化：統一 emoji + 編輯器修復 + 圖片上傳體驗升級\n\n❌ 統一關閉按鈕為 emoji\n• 全站 10 處 ✕ 符號統一替換為 ❌ emoji（Modal/Dialog/TagInput/Toast/顏色清除等）\n• 尺寸顯示的 × 乘號保持不變（語義不同）\n\n📝 編輯器 tab 切換內容丟失修復\n• 根因：條件渲染卸載編輯器 DOM，切回時 Quill 實例不會重新初始化\n• 修復：改用 CSS display:none/block 切換 tab，編輯器 DOM 始終保持掛載\n\n🖼️ 編輯器圖片上傳三合一優化\n• 移除 window.prompt URL 輸入框，點擊圖片圖標直開媒體庫選擇彈窗\n• MediaPickerModal 增強為三合一：媒體庫網格 + ⬆️上傳圖片 + 🔗外鏈URL\n• 上傳後自動刷新列表，單張圖片自動選中插入\n\n📋 粘貼批量圖片壓縮\n• 監聽 Quill paste 事件，攔截剪貼板圖片（截圖/複製帶圖富文本）\n• 阻止默認 base64 插入，走 ImageCompressDialog 批量壓縮上傳\n• 修復批量上傳只取第一張的問題（pendingImageUpload 改為多文件）\n\n🐛 媒體庫壓縮卡 0% 修復\n• 根因：壓縮觸發 useEffect 依賴缺少 files，首次上傳時 runCompress 從未執行\n• 修復：添加 previewsRef 同步鏡像避免閉包陳舊，依賴加入 files\n\n🔧 wrangler 部署 warning 修復\n• 創建 admin/wrangler.jsonc 指定 pages_build_output_dir，消除配置警告',
   },
   {

@@ -203,6 +203,37 @@ async function request<T>(
     throw new Error(msg)
   }
 
+  // 500 = 伺服器內部錯誤 → 嘗試解析後端返回的詳細錯誤信息
+  if (res.status === 500) {
+    const json = await res.json().catch(() => ({ msg: '伺服器內部錯誤' })) as ApiResponse<T> & { detail?: string }
+    const msg = json.msg || '伺服器內部錯誤'
+    const detailParts = [
+      `請求: ${options.method || 'GET'} ${path}`,
+      `HTTP 500 Internal Server Error`,
+      `錯誤碼: ${json.code}`,
+    ]
+    if (json.detail) {
+      detailParts.push(`後端詳情: ${json.detail}`)
+    }
+    showGlobalError('伺服器錯誤', msg, detailParts.join('\n'))
+    throw new Error(msg)
+  }
+
+  // 其他非 200 狀態碼（404/429/502/503 等）
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({ msg: `HTTP ${res.status} ${res.statusText}` })) as ApiResponse<T> & { detail?: string }
+    const msg = json.msg || `HTTP ${res.status} ${res.statusText}`
+    const detailParts = [
+      `請求: ${options.method || 'GET'} ${path}`,
+      `HTTP ${res.status} ${res.statusText}`,
+    ]
+    if (json.detail) {
+      detailParts.push(`後端詳情: ${json.detail}`)
+    }
+    showGlobalError('請求失敗', msg, detailParts.join('\n'))
+    throw new Error(msg)
+  }
+
   const json: ApiResponse<T> = await res.json()
   if (json.code !== 0) {
     const msg = json.msg || '請求失敗'

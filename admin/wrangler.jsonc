@@ -1,5 +1,11 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "cms-admin",
-  "pages_build_output_dir": "deploy"
+  "pages_build_output_dir": "deploy",
+  "services": [
+    {
+      "binding": "API",
+      "service": "rust-cms"
+    }
+  ]
 }
