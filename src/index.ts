@@ -526,6 +526,14 @@ app.get('/api/v1/admin/contents/trash', async (c) => {
   return modelService.handleListTrashedContents(siteDB(c), params);
 });
 
+// 後台內容詳情（無緩存、無 status 過濾、無訪問量追蹤）— 專供編輯頁面載入
+app.get('/api/v1/admin/contents/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return contentService.handleAdminContentDetail(siteDB(c), id);
+});
+
 app.post('/api/v1/admin/contents', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

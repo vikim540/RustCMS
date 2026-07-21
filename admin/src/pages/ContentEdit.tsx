@@ -978,7 +978,8 @@ export default function ContentEdit() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<ContentDetail>(`/contents/${id}`)
+      // 使用 admin 端點載入內容（不經過 Workers Cache，確保讀到最新數據）
+      const res = await api.get<ContentDetail>(`/admin/contents/${id}`)
       const content = res.data?.content
       if (content) {
         // 將 'YYYY-MM-DD HH:MM:SS' 轉為 datetime-local 所需的 'YYYY-MM-DDTHH:MM'
@@ -1275,9 +1276,9 @@ export default function ContentEdit() {
           }
         })
 
-        // ─── 粘貼事件：攔截剪貼板圖片，批量壓縮上傳 ───
-        // 場景：用戶截圖粘貼、從 Word/網頁複製帶圖富文本
-        // 處理：提取剪貼板中的圖片文件 → ImageCompressDialog 批量壓縮 → 上傳 → 插入編輯器
+        // ─── 粘貼事件：攔截剪貼板圖片 + 粘貼 HTML 中的 base64 圖片 ───
+        // 場景1：用戶截圖粘貼 → 提取 File → 壓縮上傳 → 插入編輯器
+        // 場景2：從本地文章/Word/網頁複製帶圖富文本 → Quill 插入 HTML → 掃描 base64 圖片 → 轉存媒體庫
         const handlePaste = async (e: ClipboardEvent) => {
           const clipboardData = e.clipboardData
           if (!clipboardData) return
@@ -1303,24 +1304,68 @@ export default function ContentEdit() {
             }
           }
 
-          if (imageFiles.length === 0) return
+          // 場景1：剪貼板有圖片文件（截圖）→ 阻止默認，走批量壓縮上傳
+          if (imageFiles.length > 0) {
+            e.preventDefault()
+            e.stopPropagation()
 
-          // 有圖片：阻止默認行為（避免插入 base64），走批量壓縮上傳流程
-          e.preventDefault()
-          e.stopPropagation()
+            const range = quill.getSelection()
+            const insertIndex = range ? range.index : (quill.getLength() || 0) - 1
 
-          // 記錄當前游標位置（粘貼發生時的位置）
-          const range = quill.getSelection()
-          const insertIndex = range ? range.index : (quill.getLength() || 0) - 1
+            const urls = await uploadImages(imageFiles)
+            const validUrls = urls.filter((u): u is string => !!u)
 
-          // 批量壓縮上傳
-          const urls = await uploadImages(imageFiles)
-          const validUrls = urls.filter((u): u is string => !!u)
+            validUrls.forEach((url, i) => {
+              quill.insertEmbed(insertIndex + i, 'image', url)
+            })
+            return
+          }
 
-          // 逐張插入編輯器
-          validUrls.forEach((url, i) => {
-            quill.insertEmbed(insertIndex + i, 'image', url)
-          })
+          // 場景2：富文本粘貼（無 File items，有 text/html）→ 讓 Quill 處理後掃描 base64 圖片
+          const hasHtml = Array.from(items).some(
+            (item) => item.kind === 'string' && item.type === 'text/html'
+          )
+          if (!hasHtml) return
+
+          // 不阻止默認行為，讓 Quill 插入 HTML
+          // 延遲掃描，等 Quill 完成 DOM 插入
+          setTimeout(async () => {
+            if (!quillRef.current) return
+            const root = quillRef.current.root
+            const base64Images = root.querySelectorAll<HTMLImageElement>(
+              'img[src^="data:image/"]'
+            )
+            if (base64Images.length === 0) return
+
+            // 將每個 base64 圖片轉為 File 對象
+            const files: File[] = []
+            const imgElements: HTMLImageElement[] = []
+            for (let i = 0; i < base64Images.length; i++) {
+              const img = base64Images[i]
+              try {
+                const resp = await fetch(img.src)
+                const blob = await resp.blob()
+                const ext = blob.type.split('/')[1] || 'png'
+                const file = new File([blob], `paste_html_${Date.now()}_${i}.${ext}`, {
+                  type: blob.type,
+                })
+                files.push(file)
+                imgElements.push(img)
+              } catch {
+                // 單個轉換失敗跳過，不影響其他
+              }
+            }
+
+            if (files.length === 0) return
+
+            // 批量壓縮上傳
+            const urls = await uploadImages(files)
+            imgElements.forEach((img, i) => {
+              if (urls[i]) {
+                img.src = urls[i]!
+              }
+            })
+          }, 50)
         }
 
         quill.root.addEventListener('paste', handlePaste)

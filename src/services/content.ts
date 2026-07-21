@@ -108,6 +108,21 @@ export async function handleContentDetail(
   return okData({ content, prev, next }, '成功');
 }
 
+/** 後台內容詳情（無 status 過濾、無訪問量追蹤、不被 Workers Cache 緩存）
+ *  專供編輯頁面載入使用，確保讀到最新數據，避免邊緣緩存導致字段為空
+ */
+export async function handleAdminContentDetail(
+  db: D1Database,
+  id: number,
+): Promise<Response> {
+  const content = await db.prepare(
+    'SELECT * FROM ay_content WHERE id = ?',
+  ).bind(id).first();
+
+  if (!content) return notFound('內容不存在');
+  return okData({ content }, '成功');
+}
+
 /** 後台內容列表 (含草稿和回收站, 支持按模型 mcode 過濾)
  *  參考 PbootCMS/Go 版邏輯: 通過 mcode 過濾欄目, 再按欄目查內容
  *  Go版: query.Where("scode IN (SELECT scode FROM ay_content_sort WHERE mcode = ?)", mcode)
@@ -172,7 +187,7 @@ export async function handleAdminListContents(
   return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
-/** 新增內容 (含擴展字段保存) */
+/** 新增內容 (含擴展字段保存，全字段寫入) */
 export async function handleCreateContent(
   db: D1Database,
   body: { title?: string; scode?: string; content?: string; date?: string; status?: string; istop?: string; isrecommend?: string; isheadline?: string; sorting?: string; ext_fields?: Record<string, unknown>; [key: string]: unknown },
@@ -186,12 +201,22 @@ export async function handleCreateContent(
   const now = nowStr();
   const date = body.date || now;
 
+  // 全字段 INSERT（與前端表單字段一一對應，避免創建時丟失 author/source/ico/filename 等）
   const result = await db.prepare(
-    "INSERT INTO ay_content (acode, scode, title, titlecolor, content, date, status, istop, isrecommend, isheadline, sorting, visits, likes, oppose, gtype, gid, create_user, update_user, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, '4', '', ?, ?, ?, ?)",
+    "INSERT INTO ay_content (acode, scode, title, titlecolor, subtitle, filename, author, source, outlink, ico, content, tags, keywords, description, date, status, istop, isrecommend, isheadline, sorting, visits, likes, oppose, gtype, gid, create_user, update_user, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, '4', '', ?, ?, ?, ?)",
   ).bind(
     acode, scode, title,
     body.titlecolor || '',
+    body.subtitle || '',
+    body.filename || '',
+    body.author || '',
+    body.source || '',
+    body.outlink || '',
+    body.ico || '',
     body.content || '',
+    body.tags || '',
+    body.keywords || '',
+    body.description || '',
     date,
     body.status || '1',
     body.istop || '0',

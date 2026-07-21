@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.3',
+    date: '2026-07-21 12:10:00',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 內容編輯全鏈路修復 + Webhook 推送修復 + 粘貼圖片轉存\n\n📝 創建文章丟失字段修復\n• 根因：handleCreateContent INSERT 語句缺少 author/source/ico/filename/subtitle/outlink/tags/keywords/description 等 9 個字段\n• 修復：INSERT 補全所有表單字段，創建時不再丟失數據\n\n🔍 編輯頁面字段為空修復\n• 根因：前端使用公開 API /contents/:id 載入編輯數據，被 Workers Cache 緩存 300s\n• 根因2：公開 API 過濾 status=\'1\'，草稿無法載入\n• 修復：新增 admin 端點 GET /admin/contents/:id（無緩存、無 status 過濾、無訪問量追蹤）\n• 前端 ContentEdit 改用 admin 端點載入，確保讀到最新數據\n\n🔔 Webhook 版本通知修復\n• 根因：v1.7.0 Flagship 混合模式後，getFlagEnabled 優先讀 Flagship，未配置時返回 false 導致 webhook 被靜默跳過\n• 修復：版本通知直接讀 D1 配置 webhook_enabled（繞過 Flagship），系統級功能不受 Flagship 影響\n• 改善：Dashboard 版本通知添加結果日誌（成功/跳過原因/失敗），不再靜默吞錯\n\n📋 粘貼富文本 base64 圖片轉存\n• 場景：從本地文章/Word/網頁複製帶圖富文本，圖片為 base64 data URI\n• 修復：粘貼後延遲掃描編輯器 img[src^="data:image/"]，轉為 File 上傳 R2，替換 src 為媒體庫 URL',
+  },
+  {
     version: 'v1.7.2',
     date: '2026-07-21 11:44:12',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '🔧 錯誤追蹤系統升級 + Service Binding 配置修復\n\n🐛 PUT /admin/contents/:id 返回 500 修復\n• 根因：admin/wrangler.jsonc 創建時缺少 services 綁定配置，部署後覆蓋了 Dashboard 中的 Service Binding\n• 修復：wrangler.jsonc 添加 services: [{ binding: "API", service: "rust-cms" }]\n\n🛡️ 後端 handleUpdateContent 添加 try/catch\n• SQL 執行失敗時返回有意義的錯誤信息（包含具體錯誤原因），不再返回裸 500\n\n🔗 Pages Function 錯誤處理增強\n• 添加 try/catch 捕獲 Service Binding fetch 異常\n• 錯誤響應增加 detail 字段，包含請求方法、路徑、時間戳、異常詳情\n\n📡 前端 api.ts 錯誤處理升級\n• 新增 HTTP 500 專門處理分支，解析後端 detail 字段\n• 新增其他非 200 狀態碼處理（404/429/502/503 等）\n• res.json() 失敗時有 fallback，不再因非 JSON 響應崩潰\n\n📋 GlobalErrorToast 一鍵複製功能\n• 每個錯誤卡片新增 📋 複製按鈕，一鍵複製完整錯誤信息（標題+描述+時間+技術詳情）\n• 技術詳情默認展開（不再需要手動點擊）\n• 複製成功顯示 ✅ 反饋\n• 錯誤信息包含：請求方法、路徑、HTTP 狀態碼、錯誤碼、後端詳情',
   },
   {
@@ -313,6 +320,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
   // 管理接口 (300次/分/用戶)
   { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?scode=&mcode=&page=)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/contents/:id', desc: '後台內容詳情（無緩存，編輯用）', auth: true },
   { method: 'GET', path: '/api/v1/admin/contents/all-tags', desc: '歷史標籤列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/contents', desc: '新建內容', auth: true },
   { method: 'PUT', path: '/api/v1/admin/contents/:id', desc: '更新內容', auth: true },
@@ -437,13 +445,23 @@ export default function Dashboard() {
     const latest = VERSIONS.find((v) => v.latest)
     if (!latest) return
     api
-      .post('/admin/notify/version-check', {
+      .post<{ pushed?: boolean; skipped?: boolean; reason?: string }>('/admin/notify/version-check', {
         version: latest.version,
         date: latest.date,
         changes: latest.changes,
         icon: latest.icon,
       })
-      .catch(() => {})
+      .then((res) => {
+        const data = res.data
+        if (data?.pushed) {
+          console.log(`[版本通知] ${latest.version} webhook 推送成功`)
+        } else if (data?.skipped) {
+          console.log(`[版本通知] ${latest.version} 跳過: ${data.reason}`)
+        }
+      })
+      .catch((e) => {
+        console.error(`[版本通知] ${latest.version} 推送失敗:`, e instanceof Error ? e.message : e)
+      })
   }, [])
 
   /** 統計卡片配置 */

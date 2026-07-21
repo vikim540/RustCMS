@@ -363,9 +363,9 @@ export async function handleVersionNotify(
   const webhookUrl = cfg(configs, 'webhook_url');
   if (!webhookUrl) return okData({ skipped: true, reason: 'webhook_url 未配置' }, '成功');
 
-  // 檢查 webhook 總開關
-  const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined, siteId };
-  const webhookEnabled = await getFlagEnabled(flagEnv, 'webhook_enabled');
+  // 檢查 webhook 總開關 — 版本通知為系統級功能，直接讀 D1 配置（繞過 Flagship）
+  // 原因：Flagship 可能未配置 webhook_enabled flag，返回 false 導致通知被靜默跳過
+  const webhookEnabled = cfg(configs, 'webhook_enabled', '1') !== '0';
   if (!webhookEnabled) return okData({ skipped: true, reason: 'webhook 未啟用' }, '成功');
 
   // 構造 markdown 內容（changes 本身已是帶 emoji + 換行的 markdown）
