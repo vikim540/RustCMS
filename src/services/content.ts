@@ -77,10 +77,12 @@ export async function handleListContents(
   return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
-/** 內容詳情 (公開接口，支持數字 ID 或 slug/urlname 查詢)
+/** 內容詳情 (公開接口，支持數字 ID 或 slug/filename 查詢)
  *  v1.7.9+：前端 Nuxt 靜態打包需要通過 slug 查詢文章詳情
  *  - 參數為純數字 → 按 id 查詢
- *  - 參數為非數字字符串 → 按 urlname (slug) 查詢
+ *  - 參數為非數字字符串 → 按 filename (slug) 查詢
+ *  ⚠️ slug 對應的是 ay_content.filename 字段（PbootCMS 約定），不是 urlname
+ *     urlname 在 PbootCMS 中用於欄目（ay_content_sort.urlname），文章層面很少使用
  */
 export async function handleContentDetail(
   db: D1Database,
@@ -95,9 +97,9 @@ export async function handleContentDetail(
       "SELECT * FROM ay_content WHERE id = ? AND status = '1'",
     ).bind(Number(idOrSlug)).first();
   } else {
-    // slug 查詢（urlname 字段，已有索引 idx_content_urlname）
+    // slug 查詢（filename 字段，已有索引 idx_content_filename）
     content = await db.prepare(
-      "SELECT * FROM ay_content WHERE urlname = ? AND status = '1'",
+      "SELECT * FROM ay_content WHERE filename = ? AND status = '1'",
     ).bind(idOrSlug).first();
   }
 
@@ -111,7 +113,7 @@ export async function handleContentDetail(
     content.visits = (content.visits || 0) + 1;
   }
 
-  // 查詢上一篇/下一篇（基於已找到的文章 ID）
+  // 查詢上一篇/下一篇（基於已找到的文章 ID，返回 filename 供前端生成連結）
   const prev = await db.prepare(
     "SELECT id, title, filename, urlname, date FROM ay_content WHERE id < ? AND status = '1' ORDER BY id DESC LIMIT 1",
   ).bind(contentId).first();

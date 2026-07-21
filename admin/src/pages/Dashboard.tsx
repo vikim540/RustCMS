@@ -47,7 +47,7 @@ const VERSIONS: VersionEntry[] = [
     date: '2026-07-21 15:16:08',
     icon: '🔗',
     latest: true,
-    changes: '🔗 公開 API 支持 slug 查詢 + 靜態打包批量端點\n\n📋 新增功能\n• GET /api/v1/contents/:idOrSlug — 詳情 API 支持數字 ID 或 slug (urlname)\n  - /api/v1/contents/27 → 按 ID 查詢\n  - /api/v1/contents/colon-polyps-cancer-causes → 按 slug 查詢\n• GET /api/v1/contents/all — 批量列表端點，pagesize 最大 500（靜態打包專用）\n  - 一般列表 API pagesize 上限 100，此端點放寬至 500\n  - 專供 Nuxt 靜態生成時批量拉取文章列表\n\n🔧 實現細節\n• 參數為純數字 → 按 id 查詢（原有邏輯）\n• 參數為非數字 → 按 urlname 查詢（新增，利用 idx_content_urlname 索引）\n• prev/next 查詢返回 urlname 字段，前端可用於生成上一篇/下一篇連結\n• /contents/all 路由在 /:idOrSlug 之前註冊（Hono 路由順序約束）\n\n💡 前端使用指南\n• 1. 調用 /contents/all?scode=xxx&pagesize=500 獲取所有文章列表（含 id+urlname）\n• 2. 根據 meta.total 判斷是否需要翻頁\n• 3. 逐一調用 /contents/{urlname或id} 獲取正文\n• 4. Nuxt generate 時遍歷所有文章生成靜態頁面',
+    changes: '🔗 公開 API 支持 slug 查詢 + 靜態打包批量端點\n\n📋 新增功能\n• GET /api/v1/contents/:idOrSlug — 詳情 API 支持數字 ID 或 slug (filename)\n  - /api/v1/contents/27 → 按 ID 查詢\n  - /api/v1/contents/colon-polyps-cancer-causes → 按 slug 查詢\n• GET /api/v1/contents/all — 批量列表端點，pagesize 最大 500（靜態打包專用）\n  - 一般列表 API pagesize 上限 100，此端點放寬至 500\n  - 專供 Nuxt 靜態生成時批量拉取文章列表\n\n🔧 實現細節\n• 參數為純數字 → 按 id 查詢（原有邏輯）\n• 參數為非數字 → 按 filename 查詢（slug，利用 idx_content_filename 索引）\n• ⚠️ slug 對應 ay_content.filename 字段（PbootCMS 約定），非 urlname\n• prev/next 查詢返回 filename 字段，前端可用於生成上一篇/下一篇連結\n• /contents/all 路由在 /:idOrSlug 之前註冊（Hono 路由順序約束）\n\n💡 前端使用指南\n• 1. 調用 /contents/all?scode=xxx&pagesize=500 獲取所有文章列表（含 id+filename）\n• 2. 根據 meta.total 判斷是否需要翻頁\n• 3. 逐一調用 /contents/{filename或id} 獲取正文\n• 4. Nuxt generate 時遍歷所有文章生成靜態頁面',
   },
   {
     version: 'v1.7.8',
@@ -353,7 +353,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=, max 100/頁)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=, max 500/頁, v1.7.9+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (支持數字ID或slug, v1.7.9+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (支持數字ID或slug/filename, v1.7.9+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
