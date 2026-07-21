@@ -44,7 +44,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.7.0',
-    date: '2026-07-21 18:00:00',
+    date: '2026-07-21 10:35:00',
     icon: '🔐',
     latest: true,
     changes: '🔐 架構級優化：密鑰管理 + 邊緣緩存 + 功能開關 + 代碼清理\n\n🔐 Secrets Store 密鑰遷移\n• JWT_SECRET 和 CF_API_TOKEN 從 wrangler secret 遷移至 Cloudflare Secrets Store\n• 異步綁定（await env.X.get()），帳號級別跨 Worker 共享\n• Store ID: aef7c32e26c84aedb4b2a5938128ca23\n\n🚀 Workers Cache 邊緣緩存\n• 取代失敗的 KV API 響應緩存中間件，聲明式邊緣緩存\n• 公開 GET 自動緩存（配置 3600s / 內容 300s），管理接口自動繞過\n• Vary: X-Site-Id 多站點緩存分區\n\n🎯 Flagship 真混合模式\n• getFlagEnabled 優先調用 Flagship getBooleanValue，失敗回退 D1\n• Flagship 模式下開關只讀保護，d1FlagCache 按站點隔離\n\n📍 Smart Placement\n• Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲\n\n🧹 代碼清理\n• 移除 acode=cn 硬編碼（vectorize.ts 兩處）\n• 移除多餘 +08:00/Z 時區後綴（scheduler.ts，依賴 TZ=Asia/Hong_Kong）\n• 清理 apiCache/getCached/setCached 死代碼\n• 刪除過時文檔（docs/00-06）+ 廢棄 Rust 原型 + lucide-react/radix-ui 依賴\n\n🐛 全局錯誤追蹤\n• ErrorBoundary + GlobalErrorToast（左下角固定彈框，手動關閉）\n• 非開發者用戶可直觀看到 bug 信息\n\n🔧 autoRouteProtection 順序修復\n• 功能開關中間件從路由後移至路由前，確保攔截生效',
@@ -481,7 +481,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold">儀表板</h1>
             <p className="text-sm text-slate-300 mt-1">
-              RustCMS 管理後台 · 歡迎回來，在此管理您的網站內容
+              CloudflareCMS 管理後台 · 歡迎回來，在此管理您的網站內容
             </p>
           </div>
         </div>
@@ -912,7 +912,7 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                   <span className="text-2xl">📦</span>
                   <div>
                     <div className="text-xs text-muted-foreground">項目名稱</div>
-                    <div className="font-semibold text-foreground mt-0.5">RustCMS</div>
+                    <div className="font-semibold text-foreground mt-0.5">CloudflareCMS</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-lg border border-border bg-white p-4">

@@ -370,16 +370,16 @@ export async function handleVersionNotify(
 
   // 構造 markdown 內容（changes 本身已是帶 emoji + 換行的 markdown）
   const iconStr = icon || '🚀';
-  const text = `#### ${iconStr} RustCMS ${version} 發布\n\n${changes}\n\n---\n\n部署: Worker + Pages`;
+  const text = `#### ${iconStr} CloudflareCMS ${version} 發布\n\n${changes}\n\n---\n\n部署: Worker + Pages`;
 
   const platform = detectPlatform(webhookUrl);
   let webhookPayload: Record<string, unknown>;
   if (platform === 'dingtalk') {
-    webhookPayload = { msgtype: 'actionCard', actionCard: { title: `RustCMS ${version} 發布`, text, hideAvatar: '0' } };
+    webhookPayload = { msgtype: 'actionCard', actionCard: { title: `CloudflareCMS ${version} 發布`, text, hideAvatar: '0' } };
   } else if (platform === 'wecom') {
     webhookPayload = { msgtype: 'markdown', markdown: { content: text } };
   } else {
-    webhookPayload = { form_name: `RustCMS ${version} 發布`, version, changes, timestamp: nowStr() };
+    webhookPayload = { form_name: `CloudflareCMS ${version} 發布`, version, changes, timestamp: nowStr() };
   }
 
   try {

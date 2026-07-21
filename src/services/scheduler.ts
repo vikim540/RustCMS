@@ -131,7 +131,7 @@ export async function handleScheduledPublish(
   // 2. 為每篇文章計算延遲並投遞到 Queue
   for (const article of upcoming) {
     if (!article.date) continue;
-    const targetTime = new Date(article.date.replace(' ', 'T')).getTime();
+    const targetTime = new Date(article.date.replace(' ', 'T') + '+08:00').getTime();
     const delaySeconds = Math.floor((targetTime - Date.now()) / 1000);
 
     // 延遲必須在 0 ~ 86400 秒之間 (Cloudflare Queues delaySeconds 限制)
@@ -264,7 +264,7 @@ export async function handleScheduleArticle(
   // 4. 若 Queue 可用且延遲在 24 小時內, 立即投遞延遲消息
   let queued = false;
   if (queue) {
-    const targetTime = new Date(publishDate.replace(' ', 'T')).getTime();
+    const targetTime = new Date(publishDate.replace(' ', 'T') + '+08:00').getTime();
     const delaySeconds = Math.floor((targetTime - Date.now()) / 1000);
 
     if (delaySeconds >= 0 && delaySeconds <= MAX_QUEUE_DELAY_SECONDS) {

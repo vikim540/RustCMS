@@ -50,8 +50,8 @@
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
 | Cloudflare API Token | 環境變量 `CLOUDFLARE_API_TOKEN` | — |
-| JWT_SECRET | wrangler secret | — |
-| TZ | `Asia/Hong_Kong` | wrangler.jsonc vars，Worker 運行時自動使用香港時區 |
+| JWT_SECRET | Secrets Store | Store ID: `aef7c32e26c84aedb4b2a5938128ca23`，異步綁定 `JWT_SECRET_STORE` |
+| TZ | `Asia/Hong_Kong` | wrangler.jsonc vars，代碼中用 `toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' })` 獲取 HK 時間 |
 
 ---
 
@@ -106,7 +106,9 @@ Cloudflarerustcms/
 | 資源 | 標識 | 說明 |
 |------|------|------|
 | Worker | `rust-cms` | 內部 Service Binding，**公網 URL 已禁用**（`workers_dev: false`） |
-| D1 | `rust-cms-db` | ID: `28a95ec3-7228-4c47-b9f6-e9cfcfcaf319` |
+| D1（主庫） | `endoscopy-cms` | ID: `c824a999-6a14-4878-bc43-2f3de023cbde`（認證/用戶/角色/菜單/站點註冊表） |
+| D1（smile） | `smile-cms` | ID: `f59320b5-b1f2-47cf-8b32-e341e1c5da48` |
+| D1（vision） | `vision-cms` | ID: `a49903a9-098e-43cd-934c-9bad2466d8ae` |
 | KV | `CONFIG_CACHE` / `TOKEN_BLACKLIST` / `API_CACHE` | 邏輯分離（CONFIG_CACHE 與 API_CACHE 共用 namespace） |
 | Queues | `publish-queue` → `publish-dlq` | 定時發布，Cron 每 15 分鐘掃描 |
 | Vectorize | `article-semantic-search` | 768 維 cosine，多語言語義搜索 |
@@ -118,7 +120,7 @@ Cloudflarerustcms/
 | Smart Placement | `placement.mode: smart` | Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲 |
 | Pages | `cms-admin` | 管理後台 SPA，域名 `cms.cmermedical.com.hk` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms` | 零延遲內部通信，前端通過 `functions/api/v1/[[path]].ts` 代理 |
-| GitHub | `https://github.com/vikim540/RustCMS.git` | 賬號 `waicun_lee@outlook.com`（Account ID: `f5d4e94cb23f69f8ae69baedff94f2ba`） |
+| GitHub | `https://github.com/vikim540/CloudflareCMS.git` | 賬號 `waicun_lee@outlook.com`（Account ID: `f5d4e94cb23f69f8ae69baedff94f2ba`） |
 
 ---
 
@@ -299,11 +301,11 @@ cd admin; npx vite build
 cd admin; & 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy deploy --project-name=cms-admin
 
 # ===== 數據庫 =====
-# 遷移
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 migrations apply rust-cms-db --remote
+# 遷移（主庫 endoscopy-cms）
+& 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 migrations apply endoscopy-cms --remote
 
-# 執行 SQL
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 execute rust-cms-db --remote --command "SELECT * FROM ay_config LIMIT 5"
+# 執行 SQL（主庫 endoscopy-cms）
+& 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 execute endoscopy-cms --remote --command "SELECT * FROM ay_config LIMIT 5"
 
 # 生成類型（配置變更後必須運行）
 & 'D:\AI\Cache\pnpm-home\wrangler.CMD' types
