@@ -44,7 +44,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.8.3',
-    date: '2026-07-21 18:00:00',
+    date: '2026-07-21 18:01:35',
     icon: '🔒',
     latest: true,
     changes: '🔒 安全加固 P0-P3（防禦縱深，通用 HTTP 標準）\n\n📋 P0：安全 HTTP 響應頭\n• Worker 中間件統一設置 6 個安全頭\n  - X-Content-Type-Options: nosniff（防 MIME 嗅探）\n  - X-Frame-Options: DENY（防點擊劫持）\n  - Referrer-Policy: strict-origin-when-cross-origin\n  - Permissions-Policy: camera/microphone/geolocation/payment 全禁\n  - Strict-Transport-Security: HSTS 預載入\n  - Content-Security-Policy: default-src \'none\'（API 只返回 JSON，最嚴格策略）\n• Pages 新增 _headers 文件（前端 SPA 安全頭，CSP 允許 Turnstile）\n• 這些是通用 HTTP 安全標準，非 Cloudflare 特有\n\n📋 P1：HTML 淨化（XSS 防禦）\n• 新增 src/utils/sanitize.ts（輕量級純函數，無 DOM 依賴）\n• sanitizeHtml()：移除 <script>、危險標籤、on* 事件、javascript: 協議\n• stripHtmlTags()：剝離所有 HTML 標籤（用於 description/keywords）\n• 整合到 handleCreateContent + handleUpdateContent\n\n📋 P2：輸入長度校驗 + 請求體限制\n• FIELD_LENGTH_LIMITS 常量定義 18 個字段最大長度（新聞網站場景）\n• validateFieldLengths() 校驗函數，超長返回明確錯誤消息\n• 請求體大小限制 2MB（排除文件上傳 multipart/form-data）\n\n📋 P3：文件上傳 MIME 白名單\n• ALLOWED_MIME_TYPES 白名單（圖片/視頻/音頻/PDF/文本/ZIP）\n• 非白名單類型返回 1001 錯誤，拒絕可執行文件上傳',
