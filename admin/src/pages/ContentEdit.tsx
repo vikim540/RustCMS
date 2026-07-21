@@ -1313,6 +1313,31 @@ export default function ContentEdit() {
               </div>
             </div>
 
+            {/* Slug + 發佈時間 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
+                <input
+                  type="text"
+                  value={form.filename}
+                  onChange={(e) => updateField('filename', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="URL別名，留空則用ID"
+                  pattern="[a-zA-Z0-9\-_/]+"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">發佈時間</label>
+                <input
+                  type="datetime-local"
+                  value={form.date}
+                  onChange={(e) => updateField('date', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">設置未來時間可實現定時發布</p>
+              </div>
+            </div>
+
             {/* 內容 - Quill 編輯器 */}
             <div>
               <label className="block text-sm font-medium mb-1.5">
@@ -1541,41 +1566,16 @@ export default function ContentEdit() {
               />
             </div>
 
-            {/* Slug (URL別名) + 外鏈 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
-                <input
-                  type="text"
-                  value={form.filename}
-                  onChange={(e) => updateField('filename', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="URL別名，留空則用ID"
-                  pattern="[a-zA-Z0-9\-_/]+"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">外鏈</label>
-                <input
-                  type="text"
-                  value={form.outlink}
-                  onChange={(e) => updateField('outlink', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="跳轉外鏈接，設置後內容變為外鏈類型"
-                />
-              </div>
-            </div>
-
-            {/* 發佈時間 */}
+            {/* 外鏈 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">發佈時間</label>
+              <label className="block text-sm font-medium mb-1.5">外鏈</label>
               <input
-                type="datetime-local"
-                value={form.date}
-                onChange={(e) => updateField('date', e.target.value)}
+                type="text"
+                value={form.outlink}
+                onChange={(e) => updateField('outlink', e.target.value)}
                 className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="跳轉外鏈接，設置後內容變為外鏈類型"
               />
-              <p className="mt-1 text-xs text-muted-foreground">設置未來時間可實現定時發布</p>
             </div>
 
             {/* 關鍵字 */}
