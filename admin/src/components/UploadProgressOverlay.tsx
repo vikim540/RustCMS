@@ -62,7 +62,7 @@ export default function UploadProgressOverlay({
                 onClick={onClearError}
                 className="ml-auto text-red-400 hover:text-red-600 text-xs transition-colors"
               >
-                ✕ 關閉
+                ❌ 關閉
               </button>
             </div>
             <pre className="whitespace-pre-wrap text-xs font-mono bg-red-100/50 rounded-lg p-2 max-h-32 overflow-y-auto">

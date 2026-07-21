@@ -53,6 +53,8 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
   const [compressing, setCompressing] = useState(false)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewUrlsRef = useRef<string[]>([])
+  /** previews 的同步鏡像，避免 runCompress 閉包中 previews 陳舊 */
+  const previewsRef = useRef<FilePreview[]>([])
 
   /** hover 放大預覽狀態 */
   const [hoverPreview, setHoverPreview] = useState<{
@@ -69,6 +71,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
       previewUrlsRef.current.push(url)
       return { original: file, originalUrl: url, result: null, compressing: true, compressProgress: 0 }
     })
+    previewsRef.current = initialPreviews
     setPreviews(initialPreviews)
   }, [files])
 
@@ -76,7 +79,11 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
   const runCompress = useCallback(async () => {
     setCompressing(true)
     // 標記所有為壓縮中
-    setPreviews((prev) => prev.map((p) => ({ ...p, compressing: true, compressProgress: 0 })))
+    setPreviews((prev) => {
+      const next = prev.map((p) => ({ ...p, compressing: true, compressProgress: 0 }))
+      previewsRef.current = next
+      return next
+    })
 
     const results: FilePreview[] = []
     for (let i = 0; i < files.length; i++) {
@@ -87,48 +94,54 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
             setPreviews((prev) => {
               const next = [...prev]
               if (next[i]) next[i] = { ...next[i], compressProgress: p }
+              previewsRef.current = next
               return next
             })
           },
         })
-        // 釋放舊的預覽 URL
-        if (previews[i]?.result?.previewUrl) {
-          URL.revokeObjectURL(previews[i].result!.previewUrl)
+        // 釋放舊的預覽 URL（用 ref 避免閉包陳舊）
+        const oldResultUrl = previewsRef.current[i]?.result?.previewUrl
+        if (oldResultUrl) {
+          URL.revokeObjectURL(oldResultUrl)
         }
-        results.push({
+        const newPreview: FilePreview = {
           original: files[i],
-          originalUrl: previews[i]?.originalUrl || '',
+          originalUrl: previewsRef.current[i]?.originalUrl || previewUrlsRef.current[i] || '',
           result,
           compressing: false,
           compressProgress: 100,
-        })
+        }
+        results.push(newPreview)
         // 逐張更新，讓用戶看到進度
         setPreviews((prev) => {
           const next = [...prev]
-          next[i] = results[i]
+          next[i] = newPreview
+          previewsRef.current = next
           return next
         })
       } catch {
-        results.push({
+        const errorPreview: FilePreview = {
           original: files[i],
-          originalUrl: previews[i]?.originalUrl || '',
+          originalUrl: previewsRef.current[i]?.originalUrl || previewUrlsRef.current[i] || '',
           result: null,
           compressing: false,
           compressProgress: 0,
-        })
+        }
+        results.push(errorPreview)
         setPreviews((prev) => {
           const next = [...prev]
-          next[i] = results[i]
+          next[i] = errorPreview
+          previewsRef.current = next
           return next
         })
       }
     }
     setCompressing(false)
-  }, [files, quality, maxDimension, format, previews])
+  }, [files, quality, maxDimension, format])
 
-  /** 設置變化時防抖重新壓縮 */
+  /** 設置變化或文件到達時防抖重新壓縮 */
   useEffect(() => {
-    if (previews.length === 0) return
+    if (files.length === 0) return
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(() => {
       runCompress()
@@ -137,7 +150,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
       if (debounceTimer.current) clearTimeout(debounceTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quality, maxDimension, format])
+  }, [files, quality, maxDimension, format])
 
   /** 組件卸載時釋放所有 ObjectURL */
   useEffect(() => {
@@ -188,7 +201,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
             className="text-slate-400 hover:text-white transition-colors text-2xl leading-none"
             aria-label="關閉"
           >
-            ✕
+            ❌
           </button>
         </div>
 

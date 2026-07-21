@@ -22,11 +22,12 @@ const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.m
 const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.snow.min.css'
 
 interface QuillInstance {
-  root: { innerHTML: string }
+  root: HTMLElement
   getText: () => string
   getContents: () => unknown
   setContents: (delta: unknown) => void
   getSelection: () => { index: number } | null
+  getLength: () => number
   insertEmbed: (index: number, type: string, value: string) => void
   on: (event: string, callback: () => void) => void
   clipboard: { dangerouslyPasteHTML: (html: string) => void }
@@ -94,6 +95,7 @@ type ContentStatus = '1' | '0'
 interface Content {
   id: number
   title: string
+  titlecolor: string
   scode: string
   content: string
   date: string
@@ -238,15 +240,22 @@ function MediaPickerModal({
   open,
   onClose,
   onSelect,
+  onUpload,
 }: {
   open: boolean
   onClose: () => void
   onSelect: (url: string) => void
+  /** 上傳新圖片（含壓縮流程），返回上傳後的 URL 列表 */
+  onUpload?: (files: File[]) => Promise<(string | null)[]>
 }) {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [storageConfig, setStorageConfig] = useState<StorageConfig | null>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
 
   // 打開時並行載入媒體文件與存儲配置
   useEffect(() => {
@@ -254,6 +263,8 @@ function MediaPickerModal({
     setLoading(true)
     setFiles([])
     setSearch('')
+    setUrlInput('')
+    setShowUrlInput(false)
     Promise.all([
       api.get<MediaListResult>('/admin/media'),
       api.get<StorageConfig>('/admin/storage/config'),
@@ -289,6 +300,45 @@ function MediaPickerModal({
     return true
   })
 
+  /** 刷新媒體列表 */
+  const refreshMedia = async () => {
+    try {
+      const mediaRes = await api.get<MediaListResult>('/admin/media')
+      setFiles(mediaRes.data?.files ?? [])
+    } catch {
+      // 刷新失敗不影響使用
+    }
+  }
+
+  /** 處理文件上傳 */
+  const handleFileUpload = async (selectedFiles: FileList | null) => {
+    if (!selectedFiles || selectedFiles.length === 0 || !onUpload) return
+    setUploading(true)
+    try {
+      const fileArray = Array.from(selectedFiles)
+      const urls = await onUpload(fileArray)
+      const validUrls = urls.filter((u): u is string => !!u)
+      // 上傳完成後刷新列表
+      await refreshMedia()
+      // 如果只有一張圖，直接選中插入
+      if (validUrls.length === 1) {
+        onSelect(validUrls[0])
+        onClose()
+      }
+    } finally {
+      setUploading(false)
+      if (uploadInputRef.current) uploadInputRef.current.value = ''
+    }
+  }
+
+  /** 確認外鏈 URL 插入 */
+  const handleUrlConfirm = () => {
+    const trimmed = urlInput.trim()
+    if (!trimmed) return
+    onSelect(trimmed)
+    onClose()
+  }
+
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -311,15 +361,70 @@ function MediaPickerModal({
           </button>
         </div>
 
-        {/* 搜索框 */}
-        <div className="px-6 py-3 border-b">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="🔍 搜索圖片..."
-            className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+        {/* 操作區：搜索 + 上傳 + 外鏈 */}
+        <div className="px-6 py-3 border-b space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="🔍 搜索圖片..."
+              className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            {onUpload && (
+              <>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e.target.files)}
+                />
+                <button
+                  type="button"
+                  onClick={() => uploadInputRef.current?.click()}
+                  disabled={uploading}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {uploading ? '⏳ 上傳中...' : '⬆️ 上傳圖片'}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowUrlInput(!showUrlInput)}
+              className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-accent transition-colors whitespace-nowrap"
+            >
+              🔗 外鏈
+            </button>
+          </div>
+          {/* 外鏈 URL 輸入區（可摺疊） */}
+          {showUrlInput && (
+            <div className="flex gap-2 pt-1">
+              <input
+                type="url"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="輸入圖片外鏈 URL（https://...）"
+                className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleUrlConfirm()
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleUrlConfirm}
+                disabled={!urlInput.trim()}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                插入
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 圖片網格 */}
@@ -333,6 +438,7 @@ function MediaPickerModal({
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <span className="text-4xl mb-2">🖼️</span>
               <p>暫無圖片</p>
+              {onUpload && <p className="text-xs mt-1">點擊上方「上傳圖片」按鈕添加</p>}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -618,6 +724,13 @@ function ExtFieldInput({
             open={mediaPickerOpen}
             onClose={() => setMediaPickerOpen(false)}
             onSelect={(url) => onChange(url)}
+            onUpload={async (files) => {
+              const urls: (string | null)[] = []
+              for (const f of files) {
+                urls.push(await uploadFile(f))
+              }
+              return urls
+            }}
           />
         </div>
       )
@@ -770,6 +883,18 @@ function ExtFieldInput({
               const existing = value ? value.split(',').filter(Boolean) : []
               onChange([...existing, url].join(','))
             }}
+            onUpload={async (files) => {
+              const urls: (string | null)[] = []
+              for (const f of files) {
+                urls.push(await uploadFile(f))
+              }
+              const valid = urls.filter((u): u is string => !!u)
+              if (valid.length > 0) {
+                const existing = value ? value.split(',').filter(Boolean) : []
+                onChange([...existing, ...valid].join(','))
+              }
+              return urls
+            }}
           />
         </div>
       )
@@ -825,9 +950,10 @@ export default function ContentEdit() {
   // ─── 圖片壓縮對話框狀態 ───
   // 當用戶選擇圖片時，彈出 ImageCompressDialog 讓用戶控制壓縮質量
   // 回調函數在壓縮確認後被調用，傳入壓縮後的文件
+  // 支持批量：粘貼富文本帶多圖時一次壓縮多張
   const [pendingImageUpload, setPendingImageUpload] = useState<{
-    file: File
-    callback: (url: string | null) => void
+    files: File[]
+    callback: (urls: (string | null)[]) => void
   } | null>(null)
 
   /** 載入欄目樹 (支持按 mcode 過濾) */
@@ -980,7 +1106,7 @@ export default function ContentEdit() {
    *
    * 非圖片文件（SVG等）直接上傳，不彈出對話框。
    *
-   * 使用位置：縮略圖、Quill 編輯器圖片、擴展字段圖片
+   * 使用位置：縮略圖、Quill 編輯器圖片、擴展字段圖片、媒體庫選擇器上傳
    */
   const uploadImage = useCallback(async (file: File): Promise<string | null> => {
     clearImgError()
@@ -990,30 +1116,81 @@ export default function ContentEdit() {
     }
     // 圖片文件：彈出壓縮對話框，等待用戶確認
     return new Promise<string | null>((resolve) => {
-      setPendingImageUpload({ file, callback: resolve })
+      setPendingImageUpload({
+        files: [file],
+        callback: (urls) => resolve(urls[0] ?? null),
+      })
     })
   }, [uploadSingle, clearImgError])
 
-  /** ImageCompressDialog 確認回調 — 上傳壓縮後的文件 */
+  /**
+   * 批量圖片上傳（用於粘貼富文本帶多圖場景）
+   * 一次彈出 ImageCompressDialog 壓縮所有圖片，然後逐張上傳
+   */
+  const uploadImages = useCallback(async (files: File[]): Promise<(string | null)[]> => {
+    // 分離需要壓縮的圖片和可直接上傳的文件
+    const compressible: File[] = []
+    const direct: { index: number; file: File }[] = []
+    files.forEach((file, index) => {
+      if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+        direct.push({ index, file })
+      } else {
+        compressible.push(file)
+      }
+    })
+
+    // 直接上傳的非圖片文件
+    const results: (string | null)[] = new Array(files.length).fill(null)
+    for (const { index, file } of direct) {
+      clearImgError()
+      results[index] = await uploadSingle(file)
+    }
+
+    // 需要壓縮的圖片文件
+    if (compressible.length > 0) {
+      const compressedUrls = await new Promise<(string | null)[]>((resolve) => {
+        setPendingImageUpload({
+          files: compressible,
+          callback: resolve,
+        })
+      })
+      let compressedIdx = 0
+      files.forEach((file, index) => {
+        if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+          results[index] = compressedUrls[compressedIdx] ?? null
+          compressedIdx++
+        }
+      })
+    }
+
+    return results
+  }, [uploadSingle, clearImgError])
+
+  /** ImageCompressDialog 確認回調 — 批量上傳壓縮後的文件 */
   const handleImageCompressConfirm = useCallback(async (compressedFiles: File[]) => {
     if (!pendingImageUpload) return
     const { callback } = pendingImageUpload
     setPendingImageUpload(null)
 
     if (compressedFiles.length === 0) {
-      callback(null)
+      callback([])
       return
     }
 
     clearImgError()
-    const url = await uploadSingle(compressedFiles[0])
-    callback(url)
+    // 逐張上傳壓縮後的文件，返回所有 URL（保持順序）
+    const urls: (string | null)[] = []
+    for (const file of compressedFiles) {
+      const url = await uploadSingle(file)
+      urls.push(url)
+    }
+    callback(urls)
   }, [pendingImageUpload, uploadSingle, clearImgError])
 
   /** ImageCompressDialog 取消回調 */
   const handleImageCompressCancel = useCallback(() => {
     if (pendingImageUpload) {
-      pendingImageUpload.callback(null)
+      pendingImageUpload.callback([])
       setPendingImageUpload(null)
     }
   }, [pendingImageUpload])
@@ -1038,6 +1215,7 @@ export default function ContentEdit() {
     if (loading) return
 
     let cancelled = false
+    let pasteHandler: ((e: ClipboardEvent) => void) | null = null
 
     const initEditor = async () => {
       try {
@@ -1071,38 +1249,8 @@ export default function ContentEdit() {
               ],
               handlers: {
                 image: function () {
-                  // 提示用戶選擇插入方式：
-                  // - 輸入外鏈 URL 直接插入
-                  // - 輸入 "media" 從媒體庫選擇
-                  // - 留空或取消則觸發文件上傳
-                  const url = window.prompt('輸入圖片外鏈 URL（留空=上傳文件，輸入 "media"=從媒體庫選擇）')
-                  if (url && url.trim().toLowerCase() === 'media') {
-                    setQuillImagePicker(true)
-                    return
-                  }
-                  if (url && url.trim()) {
-                    if (quillRef.current) {
-                      const range = quillRef.current.getSelection()
-                      const index = range ? range.index : 0
-                      quillRef.current.insertEmbed(index, 'image', url.trim())
-                    }
-                    return
-                  }
-                  // 未輸入 URL，走文件上傳流程
-                  const input = document.createElement('input')
-                  input.setAttribute('type', 'file')
-                  input.setAttribute('accept', 'image/*')
-                  input.onchange = async () => {
-                    const file = input.files?.[0]
-                    if (!file) return
-                    const uploadedUrl = await uploadImage(file)
-                    if (uploadedUrl && quillRef.current) {
-                      const range = quillRef.current.getSelection()
-                      const index = range ? range.index : 0
-                      quillRef.current.insertEmbed(index, 'image', uploadedUrl)
-                    }
-                  }
-                  input.click()
+                  // 直接打開增強版媒體庫選擇器（含上傳+外鏈+媒體庫三合一）
+                  setQuillImagePicker(true)
                 },
               },
             },
@@ -1127,6 +1275,57 @@ export default function ContentEdit() {
           }
         })
 
+        // ─── 粘貼事件：攔截剪貼板圖片，批量壓縮上傳 ───
+        // 場景：用戶截圖粘貼、從 Word/網頁複製帶圖富文本
+        // 處理：提取剪貼板中的圖片文件 → ImageCompressDialog 批量壓縮 → 上傳 → 插入編輯器
+        const handlePaste = async (e: ClipboardEvent) => {
+          const clipboardData = e.clipboardData
+          if (!clipboardData) return
+          const items = clipboardData.items
+          if (!items || items.length === 0) return
+
+          // 提取所有圖片文件（排除文本/HTML 類型）
+          const imageFiles: File[] = []
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+              const file = item.getAsFile()
+              if (file) {
+                // 給文件一個合理的名字
+                if (!file.name || file.name === 'image.png') {
+                  const ext = file.type.split('/')[1] || 'png'
+                  const newName = `paste_${Date.now()}_${i}.${ext}`
+                  imageFiles.push(new File([file], newName, { type: file.type }))
+                } else {
+                  imageFiles.push(file)
+                }
+              }
+            }
+          }
+
+          if (imageFiles.length === 0) return
+
+          // 有圖片：阻止默認行為（避免插入 base64），走批量壓縮上傳流程
+          e.preventDefault()
+          e.stopPropagation()
+
+          // 記錄當前游標位置（粘貼發生時的位置）
+          const range = quill.getSelection()
+          const insertIndex = range ? range.index : (quill.getLength() || 0) - 1
+
+          // 批量壓縮上傳
+          const urls = await uploadImages(imageFiles)
+          const validUrls = urls.filter((u): u is string => !!u)
+
+          // 逐張插入編輯器
+          validUrls.forEach((url, i) => {
+            quill.insertEmbed(insertIndex + i, 'image', url)
+          })
+        }
+
+        quill.root.addEventListener('paste', handlePaste)
+        pasteHandler = handlePaste
+
         if (!cancelled) {
           setEditorReady(true)
         }
@@ -1141,6 +1340,10 @@ export default function ContentEdit() {
     return () => {
       cancelled = true
       clearTimeout(timer)
+      // 移除粘貼事件監聽
+      if (quillRef.current && pasteHandler) {
+        quillRef.current.root.removeEventListener('paste', pasteHandler)
+      }
       if (editorRef.current) {
         editorRef.current.innerHTML = ''
       }
@@ -1269,8 +1472,8 @@ export default function ContentEdit() {
           </button>
         </div>
 
-        {/* 基本內容 Tab */}
-        {activeTab === 'basic' && (
+        {/* 基本內容 Tab（用 CSS display 切換，避免編輯器 DOM 被卸載導致內容丟失） */}
+        <div style={{ display: activeTab === 'basic' ? 'block' : 'none' }}>
           <>
             {/* 標題 */}
             <div>
@@ -1304,7 +1507,7 @@ export default function ContentEdit() {
                         className="text-xs text-muted-foreground hover:text-destructive"
                         title="清除顏色"
                       >
-                        ✕
+                        ❌
                       </button>
                     )}
                   </div>
@@ -1577,10 +1780,10 @@ export default function ContentEdit() {
               )}
             </div>
           </>
-        )}
+        </div>
 
         {/* 高級內容 Tab */}
-        {activeTab === 'advanced' && (
+        <div style={{ display: activeTab === 'advanced' ? 'block' : 'none' }}>
           <>
             {/* 副標題 */}
             <div>
@@ -1630,7 +1833,7 @@ export default function ContentEdit() {
               />
             </div>
           </>
-        )}
+        </div>
 
         {/* 操作按鈕 */}
         <div className="flex items-center gap-3 pt-4 border-t">
@@ -1659,12 +1862,14 @@ export default function ContentEdit() {
         open={icoMediaPickerOpen}
         onClose={() => setIcoMediaPickerOpen(false)}
         onSelect={(url) => updateField('ico', url)}
+        onUpload={uploadImages}
       />
 
       {/* 媒體庫選擇器 - Quill 編輯器圖片插入 */}
       <MediaPickerModal
         open={quillImagePicker}
         onClose={() => setQuillImagePicker(false)}
+        onUpload={uploadImages}
         onSelect={(url) => {
           if (quillRef.current) {
             const range = quillRef.current.getSelection()
@@ -1674,10 +1879,10 @@ export default function ContentEdit() {
         }}
       />
 
-      {/* ─── 圖片壓縮對話框（所有圖片上傳統一使用） ─── */}
+      {/* ─── 圖片壓縮對話框（所有圖片上傳統一使用，支持批量） ─── */}
       {pendingImageUpload && (
         <ImageCompressDialog
-          files={[pendingImageUpload.file]}
+          files={pendingImageUpload.files}
           onConfirm={handleImageCompressConfirm}
           onCancel={handleImageCompressCancel}
         />

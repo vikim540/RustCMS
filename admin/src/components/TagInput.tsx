@@ -80,7 +80,7 @@ export function TagInput({ values, onChange, placeholder, stripProtocol, disable
               onClick={() => removeTag(i)}
               className="hover:text-destructive transition-colors leading-none"
             >
-              ✕
+              ❌
             </button>
           </span>
         ))}

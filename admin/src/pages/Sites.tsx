@@ -182,7 +182,7 @@ export default function Sites() {
             onClick={() => setSuccessNotice(null)}
             className="text-green-600 hover:text-green-800 text-sm font-medium"
           >
-            關閉 ✕
+            關閉 ❌
           </button>
         </div>
       )}
@@ -279,7 +279,7 @@ export default function Sites() {
                   onClick={() => setShowCreateModal(false)}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  ✕
+                  ❌
                 </button>
               )}
             </div>
@@ -436,7 +436,7 @@ export default function Sites() {
                 onClick={() => setEditingSite(null)}
                 className="text-muted-foreground hover:text-foreground"
               >
-                ✕
+                ❌
               </button>
             </div>
             <div className="p-6 space-y-4">

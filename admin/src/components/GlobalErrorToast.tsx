@@ -109,7 +109,7 @@ function ErrorCard({ entry }: { entry: ErrorEntry }) {
           aria-label="關閉"
           title="關閉此通知"
         >
-          ✕
+          ❌
         </button>
       </div>
 

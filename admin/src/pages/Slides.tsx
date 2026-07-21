@@ -531,7 +531,7 @@ export default function Slides() {
                 className="px-2 py-1 bg-secondary text-secondary-foreground rounded-md text-xs hover:bg-accent"
                 title="取消"
               >
-                ✕
+                ❌
               </button>
             </div>
           ) : (

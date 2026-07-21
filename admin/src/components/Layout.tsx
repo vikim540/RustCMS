@@ -506,7 +506,7 @@ function LayoutInner() {
             className="ml-2 text-red-400 hover:text-red-600 text-lg leading-none shrink-0"
             aria-label="關閉"
           >
-            ✕
+            ❌
           </button>
         </div>
       )}
