@@ -919,6 +919,14 @@ export default function ContentEdit() {
   // 保存原始數據快照（用於保存時比對修改字段）
   const originalDataRef = useRef<Record<string, unknown> | null>(null)
   const [saveHint, setSaveHint] = useState<{ changedCount: number; fields: string[] } | null>(null)
+
+  // 保存提示 5 秒自動隱藏
+  useEffect(() => {
+    if (!saveHint) return
+    const timer = setTimeout(() => setSaveHint(null), 5000)
+    return () => clearTimeout(timer)
+  }, [saveHint])
+
   // HTML 源碼模式
   const [htmlMode, setHtmlMode] = useState(false)
   const [htmlSource, setHtmlSource] = useState('')
@@ -1587,12 +1595,12 @@ export default function ContentEdit() {
         </div>
       )}
 
-      {/* 保存提示 */}
+      {/* 保存提示 — fixed 頂部中間，5秒自動隱藏 */}
       {saveHint && (
-        <div className={`mb-4 px-4 py-3 rounded-md text-sm flex items-center justify-between ${
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-lg shadow-lg text-sm flex items-center gap-3 transition-opacity duration-300 ${
           saveHint.changedCount === 0
-            ? 'bg-gray-50 border border-gray-200 text-gray-600'
-            : 'bg-blue-50 border border-blue-200 text-blue-700'
+            ? 'bg-gray-800 text-white'
+            : 'bg-blue-600 text-white'
         }`}>
           <span>
             {saveHint.changedCount === 0
@@ -1601,8 +1609,8 @@ export default function ContentEdit() {
           </span>
           <button
             onClick={() => setSaveHint(null)}
-            className="ml-3 text-muted-foreground hover:text-foreground"
-          >❌</button>
+            className="text-white/70 hover:text-white"
+          >✕</button>
         </div>
       )}
 
