@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.2',
+    date: '2026-07-22 11:59:05',
+    icon: '📝',
+    latest: true,
+    changes: '📝 表單管理系統 + Settings Tab 修正\n\n📋 新功能：表單管理\n• 新增表單管理頁面（基礎內容 → 表單管理，M210 權限）\n• 支持創建/編輯/刪除多個表單（每個表單有獨立 API 端點）\n• 新增 POST /api/v1/forms/submit/:formId 精準路由到具體表單\n• 每個表單可配置專屬 Webhook URL（獨立推送通道）\n• 表單啟用/停用開關（is_active 控制是否展示在擴展內容側邊欄）\n• 活躍表單自動注入側邊欄「擴展內容」分組（按表單名稱顯示）\n• 點擊側邊欄表單名 → 自動篩選對應表單的提交記錄\n• FormSubmissions 顯示表單名稱（取代原始 form_key）\n\n📋 Settings Tab 修正\n• WebAPI 獨立為單獨 Tab（不再混在基本配置中）\n• 修正「其他配置」在每個 Tab 重複出現的問題（僅在基本配置 Tab 顯示）\n\n📋 數據庫變更\n• ay_form 表新增 description / is_active / sorting / status / webhook_url 字段\n• 新增 M210 菜單項 + R101/R102/R103 角色權限分配',
+  },
+  {
     version: 'v1.9.1',
     date: '2026-07-22 11:02:17',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: '🎨 UI 統一 + 批量操作 + Settings Tab 重構\n\n📋 FormSubmissions UI 修正\n• 統一 p-6 padding、text-2xl font-bold 標題（與 Messages/Tags/Links 一致）\n• 統一按鈕 class（rounded-md / hover:bg-accent / bg-primary text-primary-foreground）\n• 統一對話框結構（sticky header/footer、bg-black/50 遮罩）\n• 新增批量刪除 + 批量狀態更新（checkbox 選擇 + 批量操作欄）\n• 新增 form_key 篩選下拉（多表單類型自動檢測）\n• 新增 form-keys 端點 + batch 操作端點\n\n📋 Settings Tab 重構\n• 5 個 Tab 導航：功能開關 / 基本配置 / 安全配置 / 存儲配置 / 通知配置\n• 通知配置 Tab 中 Webhook 獨立一個 section 板塊展示\n• Webhook section 包含 webhook_url / form_webhook_url 及各類開關',
   },
   {
@@ -439,6 +446,13 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/tags', desc: '標籤列表', auth: false },
   { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
   { method: 'POST', path: '/api/v1/forms/submit', desc: '提交表單（統一表單系統，1次/10秒/IP）', auth: false },
+  { method: 'POST', path: '/api/v1/forms/submit/:formId', desc: '提交到指定表單（精準路由）', auth: false },
+  { method: 'GET', path: '/api/v1/forms/active', desc: '活躍表單列表（公開）', auth: false },
+  { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/forms/config', desc: '新建表單', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/forms/config/:id', desc: '更新表單配置', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/forms/config/:id', desc: '刪除表單（id=1 不可刪）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/submissions', desc: '表單列表（分頁+搜索+篩選）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/submissions/:id', desc: '表單詳情', auth: true },
   { method: 'PUT', path: '/api/v1/admin/forms/submissions/:id', desc: '更新表單狀態', auth: true },

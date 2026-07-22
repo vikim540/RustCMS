@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.6**（2026-07-22）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.2**（2026-07-22）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.9.2 | 2026-07-22 11:59:05 | 表單管理系統 + Settings Tab 修正。新增表單管理頁面（基礎內容→表單管理，M210 權限）、支持創建/編輯/刪除多個表單（每個表單有獨立 API 端點 POST /api/v1/forms/submit/:formId）、每個表單可配置專屬 Webhook URL、is_active 開關控制側邊欄展示、活躍表單自動注入擴展內容側邊欄（按表單名稱顯示，點擊自動篩選提交記錄）、FormSubmissions 顯示表單名稱（取代原始 form_key）、Settings WebAPI 獨立 Tab、修正其他配置重複問題、ay_form 表擴展字段（description/is_active/sorting/status/webhook_url）、遷移 0003 修正（ay_role_level 取代 ay_role_permission、菜單 ID 衝突修復 id=55） |
 | v1.9.1 | 2026-07-22 | FormSubmissions UI 統一（p-6/text-2xl font-bold/標準按鈕 class/標準對話框結構）、批量刪除+批量狀態更新（checkbox+batch端點）、form_key 篩選下拉（多表單類型）、Settings Tab 重構（5 Tab 導航：功能開關/基本配置/安全配置/存儲配置/通知配置，通知配置中 Webhook 獨立 section） |
 | v1.9.0 | 2026-07-22 | 統一表單系統（取代留言管理）。新增 ay_form_submission 表（動態 JSON 存儲）、公開端點 POST /api/v1/forms/submit（接收任意 JSON 結構表單）、管理端 CRUD + 統計、釘釘 ActionCard 推送到客服群（form_webhook_url 配置，與系統更新 webhook 分離）、前端瀑布流網格佈局（auto-fill minmax 響應式）+ 週分隔 HR + 搜索/狀態/排序、菜單 M204 統一為自定義表單、M205 舊佔位禁用 |
 | v1.8.8 | 2026-07-22 | Quill 編輯器載入修復（CSP script-src 缺少 cdnjs.cloudflare.com 導致腳本被阻擋）、全局錯誤通知一鍵複製重構（api.ts buildTechReport 捕獲調用堆疊/文件位置/行號/請求響應體，UI 保持簡短但複製內容包含完整技術診斷信息） |

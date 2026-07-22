@@ -445,8 +445,15 @@ CREATE TABLE IF NOT EXISTS ay_message (
 );
 CREATE TABLE IF NOT EXISTS ay_form (
   id INTEGER PRIMARY KEY AUTOINCREMENT, fcode TEXT, form_name TEXT, table_name TEXT,
+  description TEXT, is_active TEXT DEFAULT '1', sorting INTEGER DEFAULT 255,
+  status TEXT DEFAULT '1', webhook_url TEXT,
   create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
 );
+-- 預設表單
+INSERT OR IGNORE INTO ay_form (id, fcode, form_name, description, is_active, sorting, status, create_time, update_time) VALUES
+  (1, 'general', '通用表單', '默認通用表單', '1', 100, '1', datetime('now', '+8 hours'), datetime('now', '+8 hours')),
+  (2, 'appointment', '預約表單', '預約/報名表單', '1', 200, '1', datetime('now', '+8 hours'), datetime('now', '+8 hours')),
+  (3, 'contact', '聯絡表單', '聯絡/諮詢表單', '1', 300, '1', datetime('now', '+8 hours'), datetime('now', '+8 hours'));
 CREATE TABLE IF NOT EXISTS ay_form_field (
   id INTEGER PRIMARY KEY AUTOINCREMENT, fcode TEXT, name TEXT, length INTEGER, required TEXT DEFAULT '0',
   description TEXT, sorting INTEGER DEFAULT 255, create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT

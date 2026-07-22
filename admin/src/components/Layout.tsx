@@ -23,6 +23,15 @@ interface NavItem {
   icon: string // emoji 圖標
   /** 內容模型項目的 mcode，用於帶 query 參數時的 active 判斷 */
   mcode?: string
+  /** 顯式權限 mcode（用於動態注入項目，如表單子項使用 M204） */
+  permissionMcode?: string
+}
+
+/** 活躍表單（用於側邊欄動態注入） */
+interface ActiveForm {
+  id: number
+  form_name: string
+  fcode: string
 }
 
 /** 導航分組 */
@@ -41,7 +50,8 @@ const LABEL_MCODE_MAP: Record<string, string> = {
   // 內容管理 (M200 子菜單)
   '欄目管理': 'M202',
   '單頁管理': 'M203',
-  '留言管理': 'M204',
+  '自定義表單': 'M204',
+  '表單管理': 'M210',
   '擴展字段': 'M206',
   '內容模型': 'M207',
   '回收站': 'M208',
@@ -89,6 +99,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/site', label: '站點信息', icon: '🌐' },
       { to: '/company', label: '公司信息', icon: '🏢' },
       { to: '/categories', label: '欄目管理', icon: '🗂️' },
+      { to: '/forms', label: '表單管理', icon: '📝' },
     ],
   },
   {
@@ -153,6 +164,8 @@ function LayoutInner() {
   )
   // 模型列表（掛載時載入一次）
   const [models, setModels] = useState<Model[]>([])
+  // 活躍表單列表（掛載時載入，用於側邊欄擴展內容動態注入）
+  const [activeForms, setActiveForms] = useState<ActiveForm[]>([])
   // 當前用戶信息（用於側邊欄權限過濾）
   const [userInfo, setUserInfoState] = useState(() => getUserInfo())
   // 個人信息是否已從後端刷新完成（未刷新前非超管顯示骨架屏，避免權限閃現）
@@ -178,6 +191,16 @@ function LayoutInner() {
       .then((res) => setModels(res.data ?? []))
       .catch(() => {
         /* 載入失敗時靜默處理，側邊欄僅顯示回收站 */
+      })
+  }, [])
+
+  // 載入活躍表單列表（用於側邊欄擴展內容動態注入）
+  useEffect(() => {
+    api
+      .get<ActiveForm[]>('/admin/forms/active')
+      .then((res) => setActiveForms(res.data ?? []))
+      .catch(() => {
+        /* 載入失敗時靜默處理，側邊欄不顯示表單子項 */
       })
   }, [])
 
@@ -263,7 +286,7 @@ function LayoutInner() {
       })
   }, [])
 
-  // 構建導航分組（將動態模型注入「文章內容」分組前端，欄目管理保持首位）
+  // 構建導航分組（將動態模型注入「文章內容」、活躍表單注入「擴展內容」）
   const navGroups = useMemo<NavGroup[]>(() => {
     const contentModelItems: NavItem[] = models
       .filter((m) => m.type === '2' && m.status === '1')
@@ -273,12 +296,27 @@ function LayoutInner() {
         icon: '📰',
         mcode: m.mcode,
       }))
-    return NAV_GROUPS.map((group) =>
-      group.title === '文章內容'
-        ? { ...group, items: [...contentModelItems, ...group.items] }
-        : group,
-    )
-  }, [models])
+    const formItems: NavItem[] = activeForms.map((f) => ({
+      to: `/forms/submissions?form_key=${f.id}`,
+      label: f.form_name,
+      icon: '📝',
+      permissionMcode: 'M204',
+    }))
+    return NAV_GROUPS.map((group) => {
+      if (group.title === '文章內容') {
+        return { ...group, items: [...contentModelItems, ...group.items] }
+      }
+      if (group.title === '擴展內容') {
+        // 在「自定義表單」之後插入活躍表單子項
+        const idx = group.items.findIndex((i) => i.to === '/forms/submissions')
+        if (idx === -1) return group
+        const before = group.items.slice(0, idx + 1)
+        const after = group.items.slice(idx + 1)
+        return { ...group, items: [...before, ...formItems, ...after] }
+      }
+      return group
+    })
+  }, [models, activeForms])
 
   /** 檢查用戶是否有該導航項目的訪問權限 */
   const hasNavPermission = (item: NavItem): boolean => {
@@ -286,6 +324,8 @@ function LayoutInner() {
     if (!userInfo) return false
     // 超級管理員看到所有菜單
     if (userInfo.isSuper) return true
+    // 動態注入項目（如表單子項）：使用顯式 permissionMcode
+    if (item.permissionMcode) return userInfo.permissions.includes(item.permissionMcode)
     // 內容模型列表項目：統一使用 M201 (文章列表) 權限控制
     // item.mcode 是模型編碼（如 M1、M2），非菜單編碼，不能直接用於權限校驗
     if (item.mcode) return userInfo.permissions.includes(CONTENT_LIST_PERMISSION)
@@ -313,6 +353,21 @@ function LayoutInner() {
     if (location.pathname !== '/contents') return false
     const params = new URLSearchParams(location.search)
     return (params.get('mcode') || '') === itemMcode
+  }
+
+  /** 判斷表單子項目是否當前活躍（基於 form_key query 參數比對） */
+  const isFormItemActive = (itemTo: string): boolean => {
+    if (location.pathname !== '/forms/submissions') return false
+    const itemParams = new URLSearchParams(itemTo.split('?')[1] || '')
+    const itemFormKey = itemParams.get('form_key') || ''
+    const currentParams = new URLSearchParams(location.search)
+    return (currentParams.get('form_key') || '') === itemFormKey
+  }
+
+  /** 判斷靜態「自定義表單」項是否活躍（僅在無 form_key 參數時活躍） */
+  const isFormStaticActive = (): boolean => {
+    if (location.pathname !== '/forms/submissions') return false
+    return !new URLSearchParams(location.search).get('form_key')
   }
 
   const handleLogout = async () => {
@@ -432,6 +487,8 @@ function LayoutInner() {
                   <div className="space-y-0.5">
                     {group.items.map((item) => {
                       const isContentItem = item.mcode !== undefined
+                      const isFormSubItem = item.to.startsWith('/forms/submissions?')
+                      const isFormStatic = item.to === '/forms/submissions'
                       return (
                         <NavLink
                           key={item.to}
@@ -439,9 +496,14 @@ function LayoutInner() {
                           end={item.to === '/'}
                           className={({ isActive }) => {
                             // 帶 mcode 的內容項目使用自定義 active 判斷（基於 query 參數）
+                            // 表單子項目同樣使用自定義判斷
                             const active = isContentItem
                               ? isContentItemActive(item.mcode!)
-                              : isActive
+                              : isFormSubItem
+                                ? isFormItemActive(item.to)
+                                : isFormStatic
+                                  ? isFormStaticActive()
+                                  : isActive
                             return cn(
                               'flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors',
                               active

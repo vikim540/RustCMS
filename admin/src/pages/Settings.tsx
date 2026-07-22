@@ -37,8 +37,9 @@ const CONFIG_GROUPS: ConfigGroup[] = [
 /** Tab 定義 */
 const TABS = [
   { key: 'flags', label: '功能開關', icon: '🚩' },
-  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 40, 60] },
+  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 60] },
   { key: 'security', label: '安全配置', icon: '🛡️', groupMins: [30] },
+  { key: 'webapi', label: 'WebAPI', icon: '🔌', groupMins: [40] },
   { key: 'storage', label: '存儲配置', icon: '💾', groupMins: [70] },
   { key: 'notify', label: '通知配置', icon: '🔔', groupMins: [50, 90] },
 ] as const
@@ -527,7 +528,8 @@ export default function Settings() {
     if (!tab || !('groupMins' in tab)) return { groups: [] as { group: ConfigGroup; items: Config[] }[], others: [] as Config[] }
     const mins = tab.groupMins as readonly number[]
     const matched = groupedConfigs.groups.filter((g) => mins.includes(g.group.min))
-    const others = groupedConfigs.others
+    // "其他配置"只在"基本配置"tab 顯示，不在每個 tab 重複出現
+    const others = activeTab === 'basic' ? groupedConfigs.others : []
     return { groups: matched, others }
   }, [activeTab, groupedConfigs])
 
@@ -698,11 +700,6 @@ export default function Settings() {
             }
             return renderSectionCard(group, section.items)
           })}
-          {visibleGroups.others.length > 0 && renderSectionCard(
-            { min: -1, max: -1, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' },
-            visibleGroups.others,
-            true,
-          )}
         </div>
       )}
     </div>

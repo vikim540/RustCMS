@@ -423,6 +423,22 @@ app.post('/api/v1/forms/submit', formRateLimit(), async (c) => {
   return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c));
 });
 
+// 帶 formId 的表單提交（精準路由到具體表單）
+app.post('/api/v1/forms/submit/:formId', formRateLimit(), async (c) => {
+  const formId = Number(c.req.param('formId')) || 0;
+  if (formId <= 0) return err('無效的表單 ID', 1001);
+  const body = await c.req.json();
+  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  const userAgent = c.req.header('User-Agent') || '';
+  const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
+  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c), formId);
+});
+
+// 活躍表單列表（公開端點，供前端網站獲取可用表單列表）
+app.get('/api/v1/forms/active', async (c) => {
+  return formsService.handleListActiveForms(siteDB(c));
+});
+
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
 // 在 requireMenuPermission 之前執行, 將驗證後的 claims 存入上下文
 // 未認證請求不放行 (由各 handler 中的 requireAuth 返回 401)
@@ -1126,6 +1142,44 @@ app.delete('/api/v1/admin/forms/submissions/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   return formsService.handleDeleteSubmission(siteDB(c), id);
+});
+
+// ===== 後台管理接口 - 表單配置管理（M210 表單管理）=====
+app.use('/api/v1/admin/forms/config/*', requireMenuPermission('/admin/forms'));
+
+app.get('/api/v1/admin/forms/config', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return formsService.handleListForms(siteDB(c));
+});
+
+app.post('/api/v1/admin/forms/config', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return formsService.handleCreateForm(siteDB(c), body);
+});
+
+app.put('/api/v1/admin/forms/config/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json();
+  return formsService.handleUpdateForm(siteDB(c), id, body);
+});
+
+app.delete('/api/v1/admin/forms/config/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return formsService.handleDeleteForm(siteDB(c), id);
+});
+
+// 活躍表單列表（管理端，供側邊欄動態展示）
+app.get('/api/v1/admin/forms/active', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return formsService.handleListActiveForms(siteDB(c));
 });
 
 // ===== 後台管理接口 - 通知測試 =====

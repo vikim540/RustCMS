@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
 import { LoadingState, EmptyState, ErrorState } from '../components/StateDisplay'
@@ -30,6 +31,8 @@ interface SubmissionDetail extends Submission {
 interface FormKeyItem {
   form_key: string
   count: number
+  form_name: string | null
+  fcode: string | null
 }
 
 const STATUS_FILTERS = [
@@ -82,6 +85,7 @@ function formatTime(dateStr: string): string {
 }
 
 export default function FormSubmissions() {
+  const [searchParams] = useSearchParams()
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -141,6 +145,23 @@ export default function FormSubmissions() {
   }, [])
 
   useEffect(() => { fetchSubmissions(1); fetchStats(); fetchFormKeys() }, [fetchSubmissions, fetchStats, fetchFormKeys])
+
+  // 從 URL 讀取 form_key 參數（側邊欄動態表單點擊時帶入）
+  useEffect(() => {
+    const urlFormKey = searchParams.get('form_key')
+    if (urlFormKey && urlFormKey !== formKeyFilter) {
+      setFormKeyFilter(urlFormKey)
+    }
+  }, [searchParams]) // eslint-disable-line
+
+  // form_key → form_name 映射（用於卡片和詳情中顯示表單名稱）
+  const formNameMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const fk of formKeys) {
+      if (fk.form_name) map[fk.form_key] = fk.form_name
+    }
+    return map
+  }, [formKeys])
 
   useEffect(() => { const t = setTimeout(() => fetchSubmissions(1), 300); return () => clearTimeout(t) }, [search]) // eslint-disable-line
   useEffect(() => { fetchSubmissions(1) }, [statusFilter, sortBy, formKeyFilter]) // eslint-disable-line
@@ -277,7 +298,7 @@ export default function FormSubmissions() {
           >
             <option value="">全部表單類型</option>
             {formKeys.map((fk) => (
-              <option key={fk.form_key} value={fk.form_key}>{fk.form_key} ({fk.count})</option>
+              <option key={fk.form_key} value={fk.form_key}>{fk.form_name || fk.form_key} ({fk.count})</option>
             ))}
           </select>
         )}
@@ -367,6 +388,7 @@ export default function FormSubmissions() {
                   <SubmissionCard
                     key={sub.id}
                     submission={sub}
+                    formName={formNameMap[sub.form_key] || sub.form_key}
                     selected={selectedIds.has(sub.id)}
                     onToggle={() => toggleSelect(sub.id)}
                     onClick={() => handleViewDetail(sub.id)}
@@ -403,6 +425,7 @@ export default function FormSubmissions() {
       {selectedDetail && (
         <SubmissionDetailModal
           detail={selectedDetail}
+          formName={formNameMap[selectedDetail.form_key] || selectedDetail.form_key}
           onClose={() => setSelectedDetail(null)}
           onUpdateStatus={(status) => handleUpdateStatus(selectedDetail.id, status)}
           onDelete={() => handleDelete(selectedDetail.id)}
@@ -414,9 +437,10 @@ export default function FormSubmissions() {
 
 /** 表單卡片 */
 function SubmissionCard({
-  submission, selected, onToggle, onClick,
+  submission, formName, selected, onToggle, onClick,
 }: {
   submission: Submission
+  formName: string
   selected: boolean
   onToggle: () => void
   onClick: () => void
@@ -470,10 +494,10 @@ function SubmissionCard({
             </div>
           )}
         </div>
-        {submission.form_key !== 'general' && (
+        {submission.form_key !== '1' && submission.form_key !== 'general' && (
           <div className="mt-2 pt-2 border-t border-gray-50">
-            <span className="inline-block px-1.5 py-0.5 bg-secondary/50 rounded text-[10px] text-muted-foreground font-mono">
-              {submission.form_key}
+            <span className="inline-block px-1.5 py-0.5 bg-secondary/50 rounded text-[10px] text-muted-foreground">
+              {formName}
             </span>
           </div>
         )}
@@ -484,9 +508,10 @@ function SubmissionCard({
 
 /** 詳情對話框 */
 function SubmissionDetailModal({
-  detail, onClose, onUpdateStatus, onDelete,
+  detail, formName, onClose, onUpdateStatus, onDelete,
 }: {
   detail: SubmissionDetail
+  formName: string
   onClose: () => void
   onUpdateStatus: (status: string) => void
   onDelete: () => void
@@ -514,10 +539,10 @@ function SubmissionDetailModal({
 
         {/* 表單數據 */}
         <div className="px-5 py-4 space-y-2">
-          {detail.form_key !== 'general' && (
+          {detail.form_key !== '1' && detail.form_key !== 'general' && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
               <span>表單類型:</span>
-              <span className="px-2 py-0.5 bg-secondary/50 rounded font-mono">{detail.form_key}</span>
+              <span className="px-2 py-0.5 bg-secondary/50 rounded">{formName}</span>
             </div>
           )}
           {dataEntries.length === 0 ? (
