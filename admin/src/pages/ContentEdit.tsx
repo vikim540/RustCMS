@@ -1778,17 +1778,16 @@ export default function ContentEdit() {
                   </span>
                 )}
               </label>
-              {htmlMode ? (
-                <textarea
-                  value={htmlSource}
-                  onChange={(e) => setHtmlSource(e.target.value)}
-                  className="w-full h-96 px-3 py-2 border rounded-md font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="<p>HTML 源碼...</p>"
-                  spellCheck={false}
-                />
-              ) : (
-                <div ref={editorRef} className="border rounded-md overflow-hidden" />
-              )}
+              {/* 編輯器與 HTML 源碼 textarea 都保持掛載，用 CSS 切換顯示 */}
+              {/* 避免 htmlMode 切換時 Quill DOM 被卸載導致編輯器消失 */}
+              <div ref={editorRef} className={`border rounded-md overflow-hidden ${htmlMode ? 'hidden' : ''}`} />
+              <textarea
+                value={htmlSource}
+                onChange={(e) => setHtmlSource(e.target.value)}
+                className={`w-full h-96 px-3 py-2 border rounded-md font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring ${htmlMode ? '' : 'hidden'}`}
+                placeholder="<p>HTML 源碼...</p>"
+                spellCheck={false}
+              />
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                 💡 有序列表中按
                 <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono border">Shift</kbd>

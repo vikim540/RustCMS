@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.8',
+    date: '2026-07-22 15:41:49',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 修復 HTML 源碼模式切換後編輯器消失\n\n📋 問題\n• 點擊 <> 按鈕切換到 HTML 源碼模式後，再點「返回編輯器」時 Quill 編輯器不顯示\n• 原因：條件渲染導致 editorRef div 被卸載，Quill 實例指向已移除的 DOM\n\n📋 修復\n• 編輯器 div 與 textarea 都保持掛載，改用 CSS hidden 切換顯示\n• Quill 實例始終保留在 DOM 中，切換回來時無需重新初始化',
+  },
+  {
     version: 'v1.9.7',
     date: '2026-07-22 15:29:04',
     icon: '✏️',
-    latest: true,
+    latest: false,
     changes: '✏️ 編輯器有序列表軟換行修復\n\n📋 問題\n• 有序列表內按 Enter 只能創建新序號，無法在同一序號內換行\n• 無法實現「1. 標題 → 內容內容」的排版\n\n📋 修復\n• 顯式註冊 softBreak 鍵盤綁定，確保 Shift+Enter 在有序列表內插入軟換行（<br>）\n• 懸掛縮進 CSS 確保續行與首行文字對齊（序號在外，內容左對齊）\n• 編輯器下方新增鍵盤快捷鍵提示（Shift+Enter = 序號內換行，Enter = 下一序號）',
   },
   {
