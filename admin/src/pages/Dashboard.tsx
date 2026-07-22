@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.5',
+    date: '2026-07-22 15:05:01',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 權限清理 + 媒體庫刪除狀態 + 編輯保存比對 + 編輯器排版\n\n📋 權限修正\n• 徹底清除 M205（自定義表單舊）菜單 + 角色權限（M204 為現行啟用版本）\n• Roles.tsx 權限樹不再顯示重複的表單選項\n\n📋 媒體庫優化\n• 刪除圖片時顯示覆蓋層狀態：🔄 [文件名] 刪除中...\n• 刪除按鈕加 disabled 防重複點擊\n\n📋 文章編輯保存\n• 編輯模式保存時自動比對修改字段，提示「此次修改了 N 處：字段名」\n• 無修改時提示「此次無修改，未觸發保存」並跳過後端請求\n\n📋 編輯器排版\n• 有序列表懸掛縮進 CSS（序號在外，標題描述左對齊嚴絲合縫）\n• 新增 HTML 源碼按鈕（工具列末尾 <> 圖標），切換 textarea 模式直接編輯 HTML',
+  },
+  {
     version: 'v1.9.4',
     date: '2026-07-22 14:29:42',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '🔧 權限歸類修正 + 幻燈片顯隱控制\n\n📋 權限修正\n• M210 (表單管理) pcode: M200→M610（歸入基礎內容，與側邊欄一致）\n• 修正前 Roles.tsx 權限樹中 M210 錯誤顯示在「文章內容」下\n\n📋 幻燈片管理\n• 新增顯示/隱藏開關（status 字段，關閉後不返回到公開 API）\n• 公開 API handleListSlides 增加 status=\'1\' 過濾\n• 移除新增對話框中冗餘的分組 ID 文字輸入框（已有下拉選擇）\n• 切換分組時自動計算排序序號（動態自增，無需手動填寫）',
   },
   {

@@ -916,6 +916,12 @@ export default function ContentEdit() {
   const [icoMediaPickerOpen, setIcoMediaPickerOpen] = useState(false) // 縮略圖媒體庫選擇器
   const [quillImagePicker, setQuillImagePicker] = useState(false) // Quill 編輯器媒體庫選擇器
   const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
+  // 保存原始數據快照（用於保存時比對修改字段）
+  const originalDataRef = useRef<Record<string, unknown> | null>(null)
+  const [saveHint, setSaveHint] = useState<{ changedCount: number; fields: string[] } | null>(null)
+  // HTML 源碼模式
+  const [htmlMode, setHtmlMode] = useState(false)
+  const [htmlSource, setHtmlSource] = useState('')
 
   // 自定義擴展欄位
   const [extFields, setExtFields] = useState<ExtField[]>([])
@@ -991,6 +997,27 @@ export default function ContentEdit() {
           subtitle: content.subtitle ?? '',
           date: localDate,
         })
+        // 保存原始數據快照（用於保存時比對修改字段）
+        originalDataRef.current = {
+          title: content.title ?? '',
+          titlecolor: content.titlecolor ?? '',
+          scode: content.scode ?? '',
+          content: content.content ?? '',
+          keywords: content.keywords ?? '',
+          description: content.description ?? '',
+          status: content.status === '1' ? '1' : '0',
+          istop: content.istop === '1',
+          isrecommend: content.isrecommend === '1',
+          isheadline: content.isheadline === '1',
+          tags: content.tags ?? '',
+          author: content.author ?? '',
+          source: content.source ?? '',
+          ico: content.ico ?? '',
+          filename: content.filename ?? '',
+          outlink: content.outlink ?? '',
+          subtitle: content.subtitle ?? '',
+          date: localDate,
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入內容失敗')
@@ -1233,11 +1260,19 @@ export default function ContentEdit() {
                 [{ list: 'ordered' }, { list: 'bullet' }],
                 ['link', 'image'],
                 ['clean'],
+                ['html-source'], // 自定義按鈕：HTML 源碼模式
               ],
               handlers: {
                 image: function () {
                   // 直接打開增強版媒體庫選擇器（含上傳+外鏈+媒體庫三合一）
                   setQuillImagePicker(true)
+                },
+                'html-source': function () {
+                  // 切換 HTML 源碼模式
+                  if (!htmlMode && quillRef.current) {
+                    setHtmlSource(quillRef.current.root.innerHTML)
+                  }
+                  setHtmlMode(!htmlMode)
                 },
               },
             },
@@ -1248,6 +1283,25 @@ export default function ContentEdit() {
         })
 
         quillRef.current = quill
+
+        // 注入自定義 CSS：懸掛縮進 + HTML 按鈕樣式
+        const styleEl = document.createElement('style')
+        styleEl.textContent = `
+          /* 有序列表懸掛縮進：序號在外，標題和描述左對齊嚴絲合縫 */
+          .ql-editor ol { padding-left: 2.5em; list-style-position: outside; }
+          .ql-editor ol li { padding-left: 0.5em; }
+          .ql-editor ol li::marker { font-weight: bold; }
+
+          /* HTML 源碼按鈕 */
+          .ql-toolbar .ql-html-source::after { content: "<>"; font-family: monospace; font-size: 14px; }
+        `
+        editorContainer.appendChild(styleEl)
+
+        // 自定義按鈕樣式
+        const htmlBtn = editorContainer.querySelector('.ql-html-source')
+        if (htmlBtn) {
+          htmlBtn.setAttribute('title', 'HTML 源碼模式')
+        }
 
         // 設置已有內容
         if (form.content) {
@@ -1389,6 +1443,49 @@ export default function ContentEdit() {
   }
 
   /** 提交表單 */
+  // ─── 修改字段比對（僅編輯模式） ───
+  const FIELD_LABELS: Record<string, string> = {
+    title: '標題', titlecolor: '標題顏色', scode: '欄目', content: '正文',
+    keywords: '關鍵詞', description: '摘要', status: '狀態',
+    istop: '置頂', isrecommend: '推薦', isheadline: '頭條',
+    tags: '標籤', author: '作者', source: '來源',
+    ico: '縮略圖', filename: 'Slug', outlink: '外鏈',
+    subtitle: '副標題', date: '發布時間',
+  }
+
+  const getChangedFields = (): { changedCount: number; fields: string[] } => {
+    if (!isEdit || !originalDataRef.current) return { changedCount: 0, fields: [] }
+    const orig = originalDataRef.current
+    // 獲取編輯器最新內容
+    let currentContent = form.content
+    if (quillRef.current) {
+      currentContent = quillRef.current.root.innerHTML
+    }
+    const current: Record<string, unknown> = {
+      ...form,
+      content: currentContent,
+      istop: form.istop ? '1' : '0',
+      isrecommend: form.isrecommend ? '1' : '0',
+      isheadline: form.isheadline ? '1' : '0',
+      status: form.status,
+    }
+    const origNormalized: Record<string, unknown> = {
+      ...orig,
+      istop: (orig.istop as boolean) ? '1' : '0',
+      isrecommend: (orig.isrecommend as boolean) ? '1' : '0',
+      isheadline: (orig.isheadline as boolean) ? '1' : '0',
+    }
+    const changed: string[] = []
+    for (const key of Object.keys(FIELD_LABELS)) {
+      const oldVal = String(origNormalized[key] ?? '')
+      const newVal = String(current[key] ?? '')
+      if (oldVal !== newVal) {
+        changed.push(FIELD_LABELS[key])
+      }
+    }
+    return { changedCount: changed.length, fields: changed }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.title.trim()) {
@@ -1399,9 +1496,23 @@ export default function ContentEdit() {
       setError('請選擇欄目')
       return
     }
+
+    // 編輯模式：比對修改字段
+    if (isEdit) {
+      const changes = getChangedFields()
+      if (changes.changedCount === 0) {
+        setSaveHint({ changedCount: 0, fields: [] })
+        // 無修改，不觸發後端
+        return
+      }
+      setSaveHint(changes)
+    }
+
     // 從編輯器獲取最新內容
     let content = form.content
-    if (quillRef.current) {
+    if (htmlMode && htmlSource) {
+      content = htmlSource
+    } else if (quillRef.current) {
       content = quillRef.current.root.innerHTML
     }
 
@@ -1433,6 +1544,9 @@ export default function ContentEdit() {
       }
       if (isEdit) {
         await api.put(`/admin/contents/${id}`, payload)
+        // 保存成功後更新原始快照（避免再次比對時報告剛保存的修改）
+        originalDataRef.current = { ...payload, istop: payload.istop === '1', isrecommend: payload.isrecommend === '1', isheadline: payload.isheadline === '1' }
+        setSaveHint(null)
       } else {
         await api.post('/admin/contents', payload)
       }
@@ -1470,6 +1584,25 @@ export default function ContentEdit() {
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
           {error}
+        </div>
+      )}
+
+      {/* 保存提示 */}
+      {saveHint && (
+        <div className={`mb-4 px-4 py-3 rounded-md text-sm flex items-center justify-between ${
+          saveHint.changedCount === 0
+            ? 'bg-gray-50 border border-gray-200 text-gray-600'
+            : 'bg-blue-50 border border-blue-200 text-blue-700'
+        }`}>
+          <span>
+            {saveHint.changedCount === 0
+              ? '✅ 此次無修改，未觸發保存'
+              : `📝 此次修改了 ${saveHint.changedCount} 處：${saveHint.fields.join('、')}`}
+          </span>
+          <button
+            onClick={() => setSaveHint(null)}
+            className="ml-3 text-muted-foreground hover:text-foreground"
+          >❌</button>
         </div>
       )}
 
@@ -1604,8 +1737,34 @@ export default function ContentEdit() {
             <div>
               <label className="block text-sm font-medium mb-1.5">
                 內容 {!editorReady && <span className="text-xs text-muted-foreground">（編輯器載入中...）</span>}
+                {htmlMode && (
+                  <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                    📝 HTML 源碼模式
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // 將 HTML 源碼寫回編輯器
+                        if (quillRef.current && htmlSource !== '') {
+                          quillRef.current.clipboard.dangerouslyPasteHTML(htmlSource)
+                        }
+                        setHtmlMode(false)
+                      }}
+                      className="ml-2 underline hover:no-underline"
+                    >返回編輯器</button>
+                  </span>
+                )}
               </label>
-              <div ref={editorRef} className="border rounded-md overflow-hidden" />
+              {htmlMode ? (
+                <textarea
+                  value={htmlSource}
+                  onChange={(e) => setHtmlSource(e.target.value)}
+                  className="w-full h-96 px-3 py-2 border rounded-md font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="<p>HTML 源碼...</p>"
+                  spellCheck={false}
+                />
+              ) : (
+                <div ref={editorRef} className="border rounded-md overflow-hidden" />
+              )}
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
             </div>
 

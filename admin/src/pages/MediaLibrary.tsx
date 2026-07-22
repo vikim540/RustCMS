@@ -160,6 +160,7 @@ export default function MediaLibrary() {
   const [detail, setDetail] = useState<MediaDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [deletingKey, setDeletingKey] = useState<string | null>(null)
   const [markingKey, setMarkingKey] = useState<string | null>(null)
 
   // ─── 圖片壓縮對話框狀態 ────────────────────────────────
@@ -344,6 +345,7 @@ export default function MediaLibrary() {
       if (!window.confirm(`確定刪除文件 "${fileName}" 嗎？`)) return
     }
 
+    setDeletingKey(file.key)
     try {
       await api.del(`/admin/media/${encodeURIComponent(file.key)}`)
       setFiles((prev) => prev.filter((f) => f.key !== file.key))
@@ -353,6 +355,8 @@ export default function MediaLibrary() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '刪除失敗')
+    } finally {
+      setDeletingKey(null)
     }
   }
 
@@ -548,6 +552,15 @@ export default function MediaLibrary() {
                       <FileIcon category={category} />
                     )}
 
+                    {/* 刪除中覆蓋層 */}
+                    {deletingKey === file.key && (
+                      <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1 z-10">
+                        <span className="animate-spin text-2xl">🔄</span>
+                        <span className="text-xs text-white text-center px-2 truncate max-w-full">{fileName}</span>
+                        <span className="text-xs text-white/80">刪除中...</span>
+                      </div>
+                    )}
+
                     {/* 使用狀態徽章 */}
                     <span
                       className={`absolute top-2 left-2 text-[10px] px-1.5 py-0.5 rounded text-white font-medium ${
@@ -628,10 +641,15 @@ export default function MediaLibrary() {
                           e.stopPropagation()
                           handleDelete(file)
                         }}
-                        className="p-1.5 hover:bg-red-50 rounded text-muted-foreground hover:text-red-500 ml-auto"
+                        disabled={deletingKey === file.key}
+                        className="p-1.5 hover:bg-red-50 rounded text-muted-foreground hover:text-red-500 ml-auto disabled:opacity-50"
                         title="刪除"
                       >
-                        <span className="text-sm">🗑️</span>
+                        {deletingKey === file.key ? (
+                          <span className="animate-spin inline-block text-sm">🔄</span>
+                        ) : (
+                          <span className="text-sm">🗑️</span>
+                        )}
                       </button>
                     </div>
                   </div>
