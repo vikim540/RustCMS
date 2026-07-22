@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.4',
+    date: '2026-07-22 14:29:42',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 權限歸類修正 + 幻燈片顯隱控制\n\n📋 權限修正\n• M210 (表單管理) pcode: M200→M610（歸入基礎內容，與側邊欄一致）\n• 修正前 Roles.tsx 權限樹中 M210 錯誤顯示在「文章內容」下\n\n📋 幻燈片管理\n• 新增顯示/隱藏開關（status 字段，關閉後不返回到公開 API）\n• 公開 API handleListSlides 增加 status=\'1\' 過濾\n• 移除新增對話框中冗餘的分組 ID 文字輸入框（已有下拉選擇）\n• 切換分組時自動計算排序序號（動態自增，無需手動填寫）',
+  },
+  {
     version: 'v1.9.3',
     date: '2026-07-22 14:01:06',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: '🔒 表單提交 API 安全加固 + 路徑隱蔽化\n\n📋 API 簡化\n• 移除舊 POST /api/v1/messages（留言系統，已被統一表單取代）\n• 移除 POST /api/v1/forms/submit 和 /:formId（路徑太標準化）\n• 移除公開 GET /api/v1/forms/active（不需暴露表單結構）\n• 新增 POST /api/v1/f/:token — 16位隨機 token 隱蔽化端點\n\n🔒 安全層級\n• 1. submit_token 隨機路徑（62^16 種組合，不可猜測）\n• 2. Honeypot 蜜罐字段（_hp 字段被填 → 靜默丟棄）\n• 3. Origin/Referer 校驗（allowed_origins 配置時生效）\n• 4. 可選 Turnstile 人機驗證（每個表單可單獨開啟）\n• 5. 速率限制 1次/10秒/IP\n\n📋 新增字段\n• ay_form 新增 submit_token / turnstile_enabled / allowed_origins\n• FormManager 表格顯示隱蔽化端點 + 安全狀態徽章\n• 編輯對話框新增安全配置區域（Turnstile 開關 + 來源域名）\n• 表格新增 📋 複製端點 + 🔄 重新生成 token 按鈕',
   },
   {

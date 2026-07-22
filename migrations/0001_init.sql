@@ -422,6 +422,7 @@ CREATE TABLE IF NOT EXISTS ay_slide (
     subtitle TEXT,
     button_text TEXT,
     sorting INTEGER DEFAULT 255,
+    status TEXT DEFAULT '1',
     create_user TEXT,
     update_user TEXT,
     create_time TEXT,
@@ -517,7 +518,7 @@ INSERT OR IGNORE INTO ay_menu (id, mcode, pcode, name, url, ico, sorting, status
   (52, 'M610', '0',   '基礎內容', '/admin/basic',           '📋', 30,  '1', '0', '1'),
   (53, 'M301', 'M300','媒體庫',   '/admin/media',           '🖼️', 301, '1', '1', '1'),
   (54, 'M508', 'M500','多站點管理','/sites',                 '🌐', 580, '1', '0', '1'),
-  (55, 'M210', 'M200','表單管理', '/admin/forms',             '📝', 220, '1', '0', '1');
+  (55, 'M210', 'M610','表單管理', '/admin/forms',             '📝', 220, '1', '0', '1');
 
 -- ============================================================================
 -- Section 9: 種子數據 — 內容模型

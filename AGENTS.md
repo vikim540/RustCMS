@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.3**（2026-07-22）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.4**（2026-07-22）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.9.4 | 2026-07-22 14:29:42 | 權限歸類修正 + 幻燈片顯隱控制。修正 M210 (表單管理) pcode: M200→M610（歸入基礎內容，與側邊欄一致，修正前 Roles.tsx 權限樹中 M210 錯誤顯示在「文章內容」下）。幻燈片新增顯示/隱藏開關（status 字段，關閉後不返回到公開 API）、公開 API handleListSlides 增加 status='1' 過濾、移除新增對話框中冗餘的分組 ID 文字輸入框、切換分組時自動計算排序序號（動態自增） |
 | v1.9.3 | 2026-07-22 14:01:06 | 表單提交 API 安全加固。移除舊 POST /api/v1/messages（留言系統）、移除 POST /api/v1/forms/submit/:formId（標準化路徑易被掃描）、移除公開 GET /api/v1/forms/active（暴露表單結構）、新增 POST /api/v1/f/:token（16位隨機 token 隱蔽化端點，62^16 種組合）。五層安全防護：1.隨機路徑 2.Honeypot 蜜罐字段（_hp） 3.Origin/Referer 校驗（allowed_origins 配置） 4.可選 Turnstile（turnstile_enabled 每表單獨立控制） 5.速率限制 1次/10秒。新增 ay_form 字段：submit_token/turnstile_enabled/allowed_origins。FormManager 新增 📋 複製端點 + 🔄 重新生成 token 按鈕 + 安全配置區域 |
 | v1.9.2 | 2026-07-22 11:59:05 | 表單管理系統 + Settings Tab 修正。新增表單管理頁面（基礎內容→表單管理，M210 權限）、支持創建/編輯/刪除多個表單（每個表單有獨立 API 端點 POST /api/v1/forms/submit/:formId）、每個表單可配置專屬 Webhook URL、is_active 開關控制側邊欄展示、活躍表單自動注入擴展內容側邊欄（按表單名稱顯示，點擊自動篩選提交記錄）、FormSubmissions 顯示表單名稱（取代原始 form_key）、Settings WebAPI 獨立 Tab、修正其他配置重複問題、ay_form 表擴展字段（description/is_active/sorting/status/webhook_url）、遷移 0003 修正（ay_role_level 取代 ay_role_permission、菜單 ID 衝突修復 id=55） |
 | v1.9.1 | 2026-07-22 | FormSubmissions UI 統一（p-6/text-2xl font-bold/標準按鈕 class/標準對話框結構）、批量刪除+批量狀態更新（checkbox+batch端點）、form_key 篩選下拉（多表單類型）、Settings Tab 重構（5 Tab 導航：功能開關/基本配置/安全配置/存儲配置/通知配置，通知配置中 Webhook 獨立 section） |

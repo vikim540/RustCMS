@@ -472,7 +472,7 @@ CREATE TABLE IF NOT EXISTS ay_link (
 CREATE TABLE IF NOT EXISTS ay_slide (
   id INTEGER PRIMARY KEY AUTOINCREMENT, acode TEXT DEFAULT 'cn', gid TEXT DEFAULT '1', pic TEXT,
   pic_mobile TEXT, link TEXT, title TEXT, subtitle TEXT, button_text TEXT, sorting INTEGER DEFAULT 255,
-  create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
+  status TEXT DEFAULT '1', create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_slide_group (
   id INTEGER PRIMARY KEY AUTOINCREMENT, gid TEXT NOT NULL UNIQUE, name TEXT NOT NULL,

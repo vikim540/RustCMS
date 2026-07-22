@@ -17,6 +17,7 @@ interface Slide {
   subtitle: string
   button_text: string
   sorting: number
+  status: string
 }
 
 /** 表單數據 */
@@ -329,6 +330,20 @@ export default function Slides() {
     }
   }
 
+  /** 切換顯示/隱藏 */
+  const handleToggleVisibility = async (item: Slide) => {
+    const newStatus = item.status === '0' ? '1' : '0'
+    // 本地即時更新
+    setSlides((prev) => prev.map((s) => s.id === item.id ? { ...s, status: newStatus } : s))
+    try {
+      await api.put(`/admin/slides/${item.id}`, { status: newStatus })
+    } catch {
+      // 失敗時回滾
+      setSlides((prev) => prev.map((s) => s.id === item.id ? { ...s, status: item.status } : s))
+      setError('更新顯示狀態失敗')
+    }
+  }
+
   /** 拖拽開始 */
   const handleDragStart = (id: number) => {
     setDraggingId(id)
@@ -593,6 +608,7 @@ export default function Slides() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">副標題</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">連結</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">排序</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">顯示</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
                 </tr>
               </thead>
@@ -677,6 +693,21 @@ export default function Slides() {
                         )}
                         title={dirtySorts[item.id] !== undefined ? '已修改，點擊「保存排序」提交' : '修改排序值'}
                       />
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleToggleVisibility(item)}
+                        className={cn(
+                          'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                          (item.status ?? '1') === '1' ? 'bg-primary' : 'bg-muted',
+                        )}
+                        title={(item.status ?? '1') === '1' ? '點擊隱藏（不顯示到 API）' : '點擊顯示'}
+                      >
+                        <span className={cn(
+                          'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
+                          (item.status ?? '1') === '1' ? 'translate-x-5' : 'translate-x-1',
+                        )} />
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -876,34 +907,30 @@ export default function Slides() {
                       ({getGroupDisplayName(form.gid, groupNames)})
                     </span>
                   </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={uniqueGroups.includes(form.gid) ? form.gid : '__custom__'}
-                      onChange={(e) => {
-                        if (e.target.value !== '__custom__') {
-                          setForm((f) => ({ ...f, gid: e.target.value }))
-                        }
-                      }}
-                      className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm bg-white"
-                    >
-                      {uniqueGroups.includes(form.gid) ? null : (
-                        <option value="__custom__">自定義: {form.gid}</option>
-                      )}
-                      {uniqueGroups.map((gid) => (
-                        <option key={gid} value={gid}>
-                          {getGroupDisplayName(gid, groupNames)} (ID: {gid})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={form.gid}
-                      onChange={(e) => setForm((f) => ({ ...f, gid: e.target.value }))}
-                      className="w-20 px-2 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm text-center"
-                      placeholder="ID"
-                      title="直接輸入分組 ID"
-                    />
-                  </div>
+                  <select
+                    value={uniqueGroups.includes(form.gid) ? form.gid : '__custom__'}
+                    onChange={(e) => {
+                      if (e.target.value !== '__custom__') {
+                        const newGid = e.target.value
+                        // 動態計算新分組下的排序序號（最大值 + 1）
+                        const groupSlides = slides.filter((s) => (s.gid ?? '0') === newGid)
+                        const maxSorting = groupSlides.length > 0
+                          ? Math.max(...groupSlides.map((s) => s.sorting ?? 0))
+                          : 0
+                        setForm((f) => ({ ...f, gid: newGid, sorting: maxSorting + 1 }))
+                      }
+                    }}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm bg-white"
+                  >
+                    {uniqueGroups.includes(form.gid) ? null : (
+                      <option value="__custom__">自定義: {form.gid}</option>
+                    )}
+                    {uniqueGroups.map((gid) => (
+                      <option key={gid} value={gid}>
+                        {getGroupDisplayName(gid, groupNames)} (ID: {gid})
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1.5">排序</label>

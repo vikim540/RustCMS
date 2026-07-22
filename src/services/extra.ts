@@ -315,14 +315,14 @@ export async function handleAdminListSlides(
 /** 新增幻燈片 */
 export async function handleCreateSlide(
   db: D1Database,
-  body: { gid?: string; pic?: string; pic_mobile?: string; link?: string; title?: string; subtitle?: string; button_text?: string; sorting?: number },
+  body: { gid?: string; pic?: string; pic_mobile?: string; link?: string; title?: string; subtitle?: string; button_text?: string; sorting?: number; status?: string },
   acode: string = 'endoscopy',
 ): Promise<Response> {
   const now = nowStr();
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
 
   const result = await db.prepare(
-    'INSERT INTO ay_slide (acode, gid, pic, pic_mobile, link, title, subtitle, button_text, sorting, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO ay_slide (acode, gid, pic, pic_mobile, link, title, subtitle, button_text, sorting, status, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   ).bind(
     acode,
     body.gid || '1',
@@ -333,6 +333,7 @@ export async function handleCreateSlide(
     body.subtitle || '',
     body.button_text || '',
     sorting,
+    body.status || '1',
     now,
     now,
   ).run();
@@ -350,7 +351,7 @@ export async function handleUpdateSlide(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const now = nowStr();
-  const allowedFields = ['gid', 'pic', 'pic_mobile', 'link', 'title', 'subtitle', 'button_text', 'sorting'];
+  const allowedFields = ['gid', 'pic', 'pic_mobile', 'link', 'title', 'subtitle', 'button_text', 'sorting', 'status'];
 
   const sets: string[] = [];
   const binds: (string | number)[] = [];
@@ -395,7 +396,7 @@ export async function handleDeleteSlide(db: D1Database, id: number): Promise<Res
   return ok('幻燈片刪除成功');
 }
 
-/** 公開幻燈片列表 (支持 gid 篩選) */
+/** 公開幻燈片列表 (支持 gid 篩選，僅返回 status='1' 的可見幻燈片) */
 export async function handleListSlides(
   db: D1Database,
   params: URLSearchParams,
@@ -404,13 +405,13 @@ export async function handleListSlides(
 
   if (gid) {
     const result = await db.prepare(
-      'SELECT * FROM ay_slide WHERE gid = ? ORDER BY sorting ASC, id ASC',
+      `SELECT * FROM ay_slide WHERE gid = ? AND (status = '1' OR status IS NULL) ORDER BY sorting ASC, id ASC`,
     ).bind(gid).all();
     return okData(result.results, '成功');
   }
 
   const result = await db.prepare(
-    'SELECT * FROM ay_slide ORDER BY sorting ASC, id ASC',
+    `SELECT * FROM ay_slide WHERE (status = '1' OR status IS NULL) ORDER BY sorting ASC, id ASC`,
   ).all();
   return okData(result.results, '成功');
 }
