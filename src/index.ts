@@ -52,6 +52,7 @@ export interface Env {
   SITE_REGISTRY: string;             // 多站點註冊表 JSON（site_id → {binding, name, domain}）
   CF_ACCOUNT_ID: string;             // Cloudflare Account ID（D1 REST API 創建動態站點用）
   CF_API_TOKEN_STORE: SecretsStoreSecret;  // Cloudflare API Token（Secrets Store 異步綁定，D1 REST API 用）
+  TURNSTILE_SECRET_STORE: SecretsStoreSecret;  // Cloudflare Turnstile 密鑰（Secrets Store 異步綁定）
   PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string; siteId?: string }>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
@@ -311,7 +312,8 @@ app.get('/api/health', (c) => {
 app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
   const loginIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
-  return authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, await c.env.JWT_SECRET_STORE.get(), body, loginIp);
+  const turnstileSecret = await c.env.TURNSTILE_SECRET_STORE.get();
+  return authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, await c.env.JWT_SECRET_STORE.get(), body, loginIp, turnstileSecret);
 });
 
 // 公開：獲取 Turnstile 配置（site key 是公開的，secret key 不返回）

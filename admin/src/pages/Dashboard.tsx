@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.6',
+    date: '2026-07-22 08:05:05',
+    icon: '🔐',
+    latest: true,
+    changes: '🔐 Turnstile 密鑰遷移至 Secrets Store（修復 v1.7.0 遺留問題）\n\n📋 根因\n• v1.7.0 遷移 0010_clear_sensitive_passwords.sql 清空了 D1 中的 turnstile_secret_key\n• 意圖是遷移到 Secrets Store，但代碼未同步更新（auth.ts 仍從 D1 讀取）\n• 導致 verifyTurnstile() 始終拿到空字串，所有登錄被人機驗證擋住\n• 這是「改了一處、留一處」的代碼一致性問題\n\n📋 修復\n• Turnstile secret key 存入 Cloudflare Secrets Store（TURNSTILE_SECRET_KEY）\n• wrangler.jsonc 新增 TURNSTILE_SECRET_STORE 綁定\n• auth.ts handleLogin() 改為接收 turnstileSecret 參數（從 Secrets Store 讀取）\n• index.ts login 路由傳入 await c.env.TURNSTILE_SECRET_STORE.get()\n• 重新啟用 Turnstile（turnstile_enabled = 1）\n• 瀏覽器驗證：Turnstile widget 正常渲染+驗證，登錄流程正常',
+  },
+  {
     version: 'v1.8.5',
     date: '2026-07-22 07:53:09',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 緊急修復：Turnstile secret key 為空導致所有賬號無法登錄\n\n📋 根因\n• 數據庫 ay_config 中 turnstile_secret_key 為空字串\n• verifyTurnstile() 在 secret key 為空時返回 false（拒絕所有登錄）\n• 即使 Turnstile widget 正常渲染並生成 token，後端也無法驗證\n• 疊加 v1.8.3 的 err() bug（code 2007 返回 401），前端顯示「登錄已過期」\n\n📋 修復\n• 臨時停用 Turnstile（turnstile_enabled = 0）恢復登錄\n• verifyTurnstile() 防禦性修復：secret key 為空時放行（return true）\n  - 與網絡異常放行邏輯一致，避免配置丟失鎖死所有用戶\n  - 僅 token 為空時才拒絕（return false）',
   },
   {

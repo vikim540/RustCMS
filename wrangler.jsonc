@@ -68,6 +68,11 @@
       "binding": "CF_API_TOKEN_STORE",
       "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
       "secret_name": "CF_API_TOKEN"
+    },
+    {
+      "binding": "TURNSTILE_SECRET_STORE",
+      "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
+      "secret_name": "TURNSTILE_SECRET_KEY"
     }
   ],
 

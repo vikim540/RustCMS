@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.5**（2026-07-22）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.6**（2026-07-22）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.8.6 | 2026-07-22 | Turnstile 密鑰遷移至 Secrets Store（修復 v1.7.0 遺留）。遷移 0010 清空了 D1 中 turnstile_secret_key 但代碼未同步更新，auth.ts 改為從 TURNSTILE_SECRET_STORE 讀取。wrangler.jsonc 新增綁定，重新啟用 Turnstile |
 | v1.8.5 | 2026-07-22 | 緊急修復：Turnstile secret key 為空導致所有賬號無法登錄。verifyTurnstile() 在 secret key 為空時返回 false 拒絕所有登錄，改為放行（return true）與網絡異常邏輯一致。臨時停用 Turnstile（turnstile_enabled=0） |
 | v1.8.4 | 2026-07-21 | 緊急修復 v1.8.3 回歸 bug：CSP connect-src 缺少 challenges.cloudflare.com 導致 Turnstile API 調用被阻擋、err() 函數 code>=2000 一律返回 401 導致 Turnstile 失敗(2007)/密碼錯誤(2001)被前端誤判為「登錄已過期」。修復：_headers connect-src 加入 Turnstile 域名、response.ts err() 改用 AUTH_ERROR_CODES 白名單（僅 2002/2003/2004/2006 返回 401） |
 | v1.8.3 | 2026-07-21 | 安全加固 P0-P3：安全 HTTP 響應頭（CSP/HSTS/X-Frame-Options 等通用標準，Worker 中間件+Pages _headers）、HTML 淨化防 XSS（sanitize.ts 純函數，整合到內容 CRUD）、輸入長度校驗+2MB 請求體限制、文件上傳 MIME 白名單 |
@@ -279,19 +280,19 @@ Cloudflarerustcms/
 - 系統設置：搜索引擎驗證從百度推送改為 Google/Bing 站點驗證
 - 公開 API：`GET /api/v1/company` 過濾敏感字段僅返回聯繫信息
 
-### Cloudflare Turnstile 人機驗證（v1.5.6）
+### Cloudflare Turnstile 人機驗證（v1.5.6，v1.8.6 重構）
 
-- **配置**：DB `ay_config` 表 3 條記錄（sorting 35-37，安全配置分組）— `turnstile_enabled`（開關）/ `turnstile_site_key`（站點密鑰）/ `turnstile_secret_key`（密鑰）
-- **後端**：`src/services/auth.ts` `verifyTurnstile()` 調用 Cloudflare siteverify API 驗證 token；`handleLogin` 開關開啟時強制驗證（網絡異常時放行避免故障）
+- **配置**：DB `ay_config` 表 2 條記錄（sorting 35-36，安全配置分組）— `turnstile_enabled`（開關）/ `turnstile_site_key`（站點密鑰）。**密鑰存儲在 Secrets Store**（v1.8.6 遷移，原 D1 `turnstile_secret_key` 已被 0010 遷移清空）
+- **後端**：`src/services/auth.ts` `verifyTurnstile()` 調用 Cloudflare siteverify API 驗證 token；`handleLogin` 接收 `turnstileSecret` 參數（從 `TURNSTILE_SECRET_STORE` 讀取），開關開啟時強制驗證（網絡異常時放行避免故障）
 - **前端**：`Login.tsx` 動態載入 Turnstile 腳本（explicit 模式），掛載時拉取 `/auth/turnstile-config` 判斷是否啟用，登錄失敗自動 reset widget
 - **公開端點**：`GET /api/v1/auth/turnstile-config` 返回 `{ enabled, siteKey }`（secret key 不返回）
 
-### Secrets Store 密鑰管理（v1.7.0）
+### Secrets Store 密鑰管理（v1.7.0，v1.8.6 擴展）
 
-- **架構**：JWT_SECRET 和 CF_API_TOKEN 從 `wrangler secret` 遷移至 Cloudflare Secrets Store（帳號級別，跨 Worker 共享）
+- **架構**：JWT_SECRET、CF_API_TOKEN、TURNSTILE_SECRET_KEY 存儲在 Cloudflare Secrets Store（帳號級別，跨 Worker 共享）
 - **綁定**：wrangler.jsonc `secrets_store_secrets` 配置，異步訪問（`await env.JWT_SECRET_STORE.get()`），與原同步 `env.JWT_SECRET` 不兼容
-- **Store**：`default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`），CLI 管理 `wrangler secrets-store secret list/create/delete --store-id <id>`
-- **代碼變更**：`requireAuth`、`handleLogin`、`handleCreateSite` 均改為 `await c.env.JWT_SECRET_STORE.get()` / `await c.env.CF_API_TOKEN_STORE.get()`
+- **Store**：`default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`），CLI 管理 `wrangler secrets-store secret create <store-id> --name <name> --value <value> --scopes workers --remote`
+- **代碼變更**：`requireAuth`、`handleLogin`、`handleCreateSite` 均改為 `await c.env.JWT_SECRET_STORE.get()` / `await c.env.CF_API_TOKEN_STORE.get()` / `await c.env.TURNSTILE_SECRET_STORE.get()`
 
 ### 全局錯誤追蹤（v1.7.0）
 

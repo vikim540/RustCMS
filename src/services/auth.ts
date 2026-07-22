@@ -96,6 +96,7 @@ export async function handleLogin(
   jwtSecret: string,
   body: { username?: string; password?: string; turnstileToken?: string },
   loginIp: string = '',
+  turnstileSecret: string = '',
 ): Promise<Response> {
   const username = body.username;
   const passwordInput = body.password;
@@ -104,11 +105,11 @@ export async function handleLogin(
   }
 
   // Cloudflare Turnstile 人機驗證（開關開啟時驗證）
+  // secret key 從 Secrets Store 讀取（v1.7.0 遷移，0010 遷移已清空 D1 中的值）
   const turnstileEnabled = await getConfig(db, kv, 'turnstile_enabled', '0');
   if (turnstileEnabled === '1') {
-    const secretKey = await getConfig(db, kv, 'turnstile_secret_key', '');
     const token = body.turnstileToken || '';
-    const verified = await verifyTurnstile(secretKey, token, loginIp || undefined);
+    const verified = await verifyTurnstile(turnstileSecret, token, loginIp || undefined);
     if (!verified) {
       return err('人機驗證失敗，請重試', 2007);
     }
