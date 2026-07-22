@@ -338,3 +338,41 @@ export async function handleSubmissionStats(db: D1Database): Promise<Response> {
     by_form_key: formKeyRows.results,
   });
 }
+
+/** 批量刪除 */
+export async function handleBatchDeleteSubmissions(db: D1Database, ids: number[]): Promise<Response> {
+  if (!ids.length) return err('請選擇要刪除的記錄', 1001);
+  const placeholders = ids.map(() => '?').join(',');
+  const result = await db.prepare(
+    `DELETE FROM ay_form_submission WHERE id IN (${placeholders})`,
+  ).bind(...ids).run();
+  return ok(`已刪除 ${result.meta.changes} 條記錄`);
+}
+
+/** 批量更新狀態 */
+export async function handleBatchUpdateStatus(
+  db: D1Database,
+  ids: number[],
+  status: string,
+): Promise<Response> {
+  if (!ids.length) return err('請選擇要操作的記錄', 1001);
+  if (!['0', '1', '2'].includes(status)) {
+    return err('無效狀態值', 1001);
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  const result = await db.prepare(
+    `UPDATE ay_form_submission SET status = ? WHERE id IN (${placeholders})`,
+  ).bind(status, ...ids).run();
+  return ok(`已更新 ${result.meta.changes} 條記錄`);
+}
+
+/** 獲取所有 form_key 列表（用於篩選下拉） */
+export async function handleListFormKeys(db: D1Database): Promise<Response> {
+  const rows = await db.prepare(
+    `SELECT form_key, COUNT(*) as count
+     FROM ay_form_submission
+     GROUP BY form_key
+     ORDER BY form_key`,
+  ).all<{ form_key: string; count: number }>();
+  return okData(rows.results);
+}

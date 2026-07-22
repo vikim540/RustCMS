@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.1',
+    date: '2026-07-22 11:02:17',
+    icon: '🎨',
+    latest: true,
+    changes: '🎨 UI 統一 + 批量操作 + Settings Tab 重構\n\n📋 FormSubmissions UI 修正\n• 統一 p-6 padding、text-2xl font-bold 標題（與 Messages/Tags/Links 一致）\n• 統一按鈕 class（rounded-md / hover:bg-accent / bg-primary text-primary-foreground）\n• 統一對話框結構（sticky header/footer、bg-black/50 遮罩）\n• 新增批量刪除 + 批量狀態更新（checkbox 選擇 + 批量操作欄）\n• 新增 form_key 篩選下拉（多表單類型自動檢測）\n• 新增 form-keys 端點 + batch 操作端點\n\n📋 Settings Tab 重構\n• 5 個 Tab 導航：功能開關 / 基本配置 / 安全配置 / 存儲配置 / 通知配置\n• 通知配置 Tab 中 Webhook 獨立一個 section 板塊展示\n• Webhook section 包含 webhook_url / form_webhook_url 及各類開關',
+  },
+  {
     version: 'v1.9.0',
     date: '2026-07-22 10:33:37',
     icon: '📝',
-    latest: true,
+    latest: false,
     changes: '📝 統一表單系統（取代留言管理）\n\n📋 新功能\n• 新增 ay_form_submission 表（動態 JSON 存儲，支持任意字段結構）\n• 公開端點 POST /api/v1/forms/submit（接收表單提交，Form Rate Limit）\n• 管理端 CRUD：列表/詳情/狀態更新/刪除/統計\n• 釘魯 ActionCard 推送到客服群（form_webhook_url 配置）\n• 前端瀑布流網格佈局（響應式 auto-fill minmax）\n• 按週分隔 HR 橫線（週一至週日）\n• 搜索（姓名/電話/郵箱）+ 狀態篩選 + 排序\n• 詳情彈窗（點擊卡片展開全部字段）\n• 自動標記已讀（待處理 → 已處理）\n• 統計卡片（待處理/已處理/已封存計數）\n\n📋 菜單統一\n• M204 留言管理 → 自定義表單（URL: /admin/forms/submissions）\n• M205 舊自定義表單佔位項禁用\n• 側邊欄圖標 💬 → 📝',
   },
   {

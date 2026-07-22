@@ -1087,6 +1087,25 @@ app.get('/api/v1/admin/forms/submissions/stats', async (c) => {
   return formsService.handleSubmissionStats(siteDB(c));
 });
 
+app.get('/api/v1/admin/forms/submissions/form-keys', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return formsService.handleListFormKeys(siteDB(c));
+});
+
+app.post('/api/v1/admin/forms/submissions/batch', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  if (body.action === 'delete' && Array.isArray(body.ids)) {
+    return formsService.handleBatchDeleteSubmissions(siteDB(c), body.ids);
+  }
+  if (body.action === 'status' && Array.isArray(body.ids) && body.status) {
+    return formsService.handleBatchUpdateStatus(siteDB(c), body.ids, body.status);
+  }
+  return err('無效的批量操作', 1001);
+});
+
 app.get('/api/v1/admin/forms/submissions/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

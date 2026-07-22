@@ -34,6 +34,20 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
 ]
 
+/** Tab 定義 */
+const TABS = [
+  { key: 'flags', label: '功能開關', icon: '🚩' },
+  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 40, 60] },
+  { key: 'security', label: '安全配置', icon: '🛡️', groupMins: [30] },
+  { key: 'storage', label: '存儲配置', icon: '💾', groupMins: [70] },
+  { key: 'notify', label: '通知配置', icon: '🔔', groupMins: [50, 90] },
+] as const
+
+/** Webhook 專屬配置項（通知 tab 中單獨一個 section 展示） */
+const WEBHOOK_SECTION_CONFIGS = new Set([
+  'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
+])
+
 /** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
 const HIDDEN_CONFIGS = new Set([
   'open_wap', 'wap_domain', 'wap_site_dir',
@@ -87,6 +101,7 @@ export default function Settings() {
   const [s3Collapsed, setS3Collapsed] = useState(true)
   // 搜索引擎推送折疊狀態（默認折疊，很少改動）
   const [seoCollapsed, setSeoCollapsed] = useState(true)
+  const [activeTab, setActiveTab] = useState<string>('flags')
 
   /** 拉取全部配置 */
   const fetchConfigs = useCallback(async () => {
@@ -506,6 +521,42 @@ export default function Settings() {
 
   const totalChanged = Object.keys(changes).length
 
+  /** 取得當前 tab 應顯示的分組 */
+  const visibleGroups = useMemo(() => {
+    const tab = TABS.find((t) => t.key === activeTab)
+    if (!tab || !('groupMins' in tab)) return { groups: [] as { group: ConfigGroup; items: Config[] }[], others: [] as Config[] }
+    const mins = tab.groupMins as readonly number[]
+    const matched = groupedConfigs.groups.filter((g) => mins.includes(g.group.min))
+    const others = groupedConfigs.others
+    return { groups: matched, others }
+  }, [activeTab, groupedConfigs])
+
+  /** 通知 tab 中將 webhook 配置分離 */
+  const splitNotifyGroups = useMemo(() => {
+    if (activeTab !== 'notify') return null
+    const result: { title: string; icon: string; desc: string; items: Config[]; isWebhook: boolean }[] = []
+    for (const { group, items } of visibleGroups.groups) {
+      const webhookItems = items.filter((c) => WEBHOOK_SECTION_CONFIGS.has(c.name))
+      const normalItems = items.filter((c) => !WEBHOOK_SECTION_CONFIGS.has(c.name))
+      if (normalItems.length > 0) {
+        result.push({ title: group.title, icon: group.icon, desc: group.desc, items: normalItems, isWebhook: false })
+      }
+      if (webhookItems.length > 0) {
+        result.push({ title: 'Webhook 推送', icon: '🪝', desc: 'Webhook 通知地址與開關（表單提交推送至客服群）', items: webhookItems, isWebhook: true })
+      }
+    }
+    return result
+  }, [activeTab, visibleGroups])
+
+  if (loading) return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold flex items-center gap-2 mb-6">
+        <span className="text-xl">⚙️</span> 系統設置
+      </h1>
+      <LoadingState text="加載中..." />
+    </div>
+  )
+
   return (
     <div className="p-6 pb-8">
       {/* 頁頭 */}
@@ -526,10 +577,7 @@ export default function Settings() {
               項待保存
             </span>
             <button
-              onClick={() => {
-                setChanges({})
-                setSuccessMsg('')
-              }}
+              onClick={() => { setChanges({}); setSuccessMsg('') }}
               className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
             >
               全部放棄
@@ -541,112 +589,120 @@ export default function Settings() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <span className="shrink-0">⚠️</span>
-          {error}
+          <span className="shrink-0">⚠️</span>{error}
         </div>
       )}
 
       {/* 成功提示 */}
       {successMsg && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
-          <span className="shrink-0">✅</span>
-          {successMsg}
+          <span className="shrink-0">✅</span>{successMsg}
         </div>
       )}
 
-      {/* 功能開關區域 */}
-      {!loading && flags.length > 0 && (
-        <div className="mb-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-indigo-100 bg-white/50">
-            <span>🚩</span>
-            <h2 className="font-semibold text-indigo-900">功能開關</h2>
-            <span className="text-xs text-indigo-600">（後台直接管理，一鍵開關相關功能）</span>
-          </div>
-          <div className="px-5 py-4 space-y-3">
-            {flags.map((flag) => {
-              const isUpdating = flagUpdating === flag.key
-              return (
-                <div
-                  key={flag.key}
-                  className="flex items-center justify-between gap-4 py-2 border-b last:border-b-0 border-indigo-100"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">
-                        {flag.icon} {flag.label}
-                      </span>
-                      {!flag.enabled && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
-                          已關閉
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {flag.description}
-                    </span>
-                  </div>
-                  <div className="shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleFlag(flag.key, flag.enabled)}
-                      disabled={isUpdating}
-                      className={cn(
-                        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                        flag.enabled ? 'bg-primary' : 'bg-muted',
-                        isUpdating && 'opacity-50 cursor-not-allowed',
-                      )}
-                      aria-label={flag.enabled ? '關閉' : '開啟'}
-                    >
-                      {isUpdating ? (
-                        <span className="animate-spin inline-block text-sm absolute left-3.5">🔄</span>
-                      ) : (
-                        <span
-                          className={cn(
-                            'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                            flag.enabled ? 'translate-x-6' : 'translate-x-1',
-                          )}
-                        />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 加載中 */}
-      {loading && (
-        <LoadingState text="加載中..." />
-      )}
-
-      {/* 加載錯誤 */}
-      {!loading && !configs.length && error && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <span className="text-2xl mb-3 text-destructive">⚠️</span>
-          <p className="mb-3">{error}</p>
+      {/* Tab 導航 */}
+      <div className="flex items-center gap-1 mb-6 border-b">
+        {TABS.map((tab) => (
           <button
-            onClick={fetchConfigs}
-            className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors"
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              activeTab === tab.key
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
           >
-            重新加載
+            {tab.icon} {tab.label}
           </button>
+        ))}
+      </div>
+
+      {/* Tab 內容 */}
+      {activeTab === 'flags' && (
+        <>
+          {/* 功能開關區域 */}
+          {flags.length > 0 && (
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 overflow-hidden">
+              <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-indigo-100 bg-white/50">
+                <span>🚩</span>
+                <h2 className="font-semibold text-indigo-900">功能開關</h2>
+                <span className="text-xs text-indigo-600">（後台直接管理，一鍵開關相關功能）</span>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {flags.map((flag) => {
+                  const isUpdating = flagUpdating === flag.key
+                  return (
+                    <div key={flag.key} className="flex items-center justify-between gap-4 py-2 border-b last:border-b-0 border-indigo-100">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">{flag.icon} {flag.label}</span>
+                          {!flag.enabled && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">已關閉</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{flag.description}</span>
+                      </div>
+                      <div className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleFlag(flag.key, flag.enabled)}
+                          disabled={isUpdating}
+                          className={cn(
+                            'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                            flag.enabled ? 'bg-primary' : 'bg-muted',
+                            isUpdating && 'opacity-50 cursor-not-allowed',
+                          )}
+                          aria-label={flag.enabled ? '關閉' : '開啟'}
+                        >
+                          {isUpdating ? (
+                            <span className="animate-spin inline-block text-sm absolute left-3.5">🔄</span>
+                          ) : (
+                            <span className={cn(
+                              'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                              flag.enabled ? 'translate-x-6' : 'translate-x-1',
+                            )} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab !== 'flags' && activeTab !== 'notify' && (
+        <div className="space-y-5">
+          {visibleGroups.groups.map(({ group, items }) => renderSectionCard(group, items))}
+          {visibleGroups.others.length > 0 && renderSectionCard(
+            { min: -1, max: -1, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' },
+            visibleGroups.others,
+            true,
+          )}
         </div>
       )}
 
-      {/* 配置分組卡片（每個區塊獨立保存） */}
-      {!loading && configs.length > 0 && (
+      {/* 通知 tab：webhook 單獨一個 section */}
+      {activeTab === 'notify' && splitNotifyGroups && (
         <div className="space-y-5">
-          {groupedConfigs.groups.map(({ group, items }) =>
-            renderSectionCard(group, items),
+          {splitNotifyGroups.map((section) => {
+            const group: ConfigGroup = {
+              min: section.isWebhook ? 55 : 50,
+              max: section.isWebhook ? 55 : 59,
+              title: section.title,
+              icon: section.icon,
+              desc: section.desc,
+            }
+            return renderSectionCard(group, section.items)
+          })}
+          {visibleGroups.others.length > 0 && renderSectionCard(
+            { min: -1, max: -1, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' },
+            visibleGroups.others,
+            true,
           )}
-          {groupedConfigs.others.length > 0 &&
-            renderSectionCard(
-              { min: -1, max: -1, title: '其他配置', icon: '⚙️', desc: '未歸類的配置項' },
-              groupedConfigs.others,
-              true,
-            )}
         </div>
       )}
     </div>
