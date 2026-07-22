@@ -1284,6 +1284,22 @@ export default function ContentEdit() {
                 },
               },
             },
+            keyboard: {
+              bindings: {
+                // 確保 Shift+Enter 在有序列表內創建軟換行（非新序號項）
+                // 解決「標題+縮進內容」排版需求：序號內按 Shift+Enter 換行
+                softBreak: {
+                  key: 'Enter',
+                  shiftKey: true,
+                  handler: function (range: { index: number }) {
+                    // @ts-expect-error Quill keyboard handler context
+                    this.quill.insertEmbed(range.index, 'softBreak', true, 'user')
+                    // @ts-expect-error Quill keyboard handler context
+                    this.quill.setSelection(range.index + 1, 0)
+                  },
+                },
+              },
+            },
             clipboard: {
               matchVisual: false,
             },
@@ -1773,6 +1789,15 @@ export default function ContentEdit() {
               ) : (
                 <div ref={editorRef} className="border rounded-md overflow-hidden" />
               )}
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                💡 有序列表中按
+                <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono border">Shift</kbd>
+                +
+                <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono border">Enter</kbd>
+                可在同一序號內換行，實現「標題+縮進內容」排版；按
+                <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono border">Enter</kbd>
+                創建下一個序號
+              </p>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
             </div>
 

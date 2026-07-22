@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.7',
+    date: '2026-07-22 15:29:04',
+    icon: '✏️',
+    latest: true,
+    changes: '✏️ 編輯器有序列表軟換行修復\n\n📋 問題\n• 有序列表內按 Enter 只能創建新序號，無法在同一序號內換行\n• 無法實現「1. 標題 → 內容內容」的排版\n\n📋 修復\n• 顯式註冊 softBreak 鍵盤綁定，確保 Shift+Enter 在有序列表內插入軟換行（<br>）\n• 懸掛縮進 CSS 確保續行與首行文字對齊（序號在外，內容左對齊）\n• 編輯器下方新增鍵盤快捷鍵提示（Shift+Enter = 序號內換行，Enter = 下一序號）',
+  },
+  {
     version: 'v1.9.6',
     date: '2026-07-22 15:18:14',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: '🎨 保存提示 UI 優化\n\n📋 編輯保存提示\n• 保存提示改為 fixed 頂部中間定位（頁面較長時也能看見）\n• 提示 5 秒後自動隱藏（無需手動關閉）\n• 無修改提示：深色背景「✅ 此次無修改，未觸發保存」\n• 有修改提示：藍色背景「📝 此次修改了 N 處：字段名」',
   },
   {
