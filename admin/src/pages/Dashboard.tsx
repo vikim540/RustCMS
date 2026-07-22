@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.9',
+    date: '2026-07-22 16:31:47',
+    icon: '✨',
+    latest: true,
+    changes: '✨ 編輯器視頻插入 + 組件化架構 + 幻燈片媒體庫\n\n📋 編輯器視頻面板\n• 新增 🎥 視頻按鈕到 Quill 工具列\n• Tab 1: YouTube 嵌入 — 自動 URL 轉換（watch?v= / youtu.be / embed/ 均支援）\n• YouTube 參數配置：自動播放(需靜音)、循環、控制條、相關影片、隱私模式、起止時間\n• Tab 2: 視頻連結 — 直接視頻 URL 生成 <video> 標籤（支援封面圖）\n• 實時預覽功能\n\n📋 組件化架構\n• 提取 MediaPickerModal 為獨立組件（admin/src/components/MediaPickerModal.tsx）\n• 新增 VideoPickerModal 獨立組件（admin/src/components/VideoPickerModal.tsx）\n• 統一 API 介面，支援跨頁面複用\n\n📋 幻燈片媒體庫\n• 新增/編輯幻燈片時可從媒體庫選擇圖片（桌面版 + 手機版均支援）\n• 複用 MediaPickerModal 統一組件，不重複造輪子',
+  },
+  {
     version: 'v1.9.8',
     date: '2026-07-22 15:41:49',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 修復 HTML 源碼模式切換後編輯器消失\n\n📋 問題\n• 點擊 <> 按鈕切換到 HTML 源碼模式後，再點「返回編輯器」時 Quill 編輯器不顯示\n• 原因：條件渲染導致 editorRef div 被卸載，Quill 實例指向已移除的 DOM\n\n📋 修復\n• 編輯器 div 與 textarea 都保持掛載，改用 CSS hidden 切換顯示\n• Quill 實例始終保留在 DOM 中，切換回來時無需重新初始化',
   },
   {

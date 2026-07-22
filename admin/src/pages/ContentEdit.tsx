@@ -5,6 +5,8 @@ import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import ImagePreviewWithRemove from '../components/ImagePreviewWithRemove'
+import MediaPickerModal from '../components/MediaPickerModal'
+import VideoPickerModal from '../components/VideoPickerModal'
 import { TagInput } from '../components/TagInput'
 import { LoadingState } from '../components/StateDisplay'
 import { useImageUpload } from '../hooks/useImageUpload'
@@ -27,11 +29,11 @@ interface QuillInstance {
   getText: () => string
   getContents: () => unknown
   setContents: (delta: unknown) => void
-  getSelection: () => { index: number } | null
+  getSelection: (focus?: boolean) => { index: number; length: number } | null
   getLength: () => number
   insertEmbed: (index: number, type: string, value: string) => void
   on: (event: string, callback: () => void) => void
-  clipboard: { dangerouslyPasteHTML: (html: string) => void }
+  clipboard: { dangerouslyPasteHTML: (html: string | number, index?: number, source?: string) => void }
 }
 
 /** Quill 本地載入狀態 */
@@ -202,290 +204,6 @@ const EMPTY_FORM: FormData = {
   outlink: '',
   subtitle: '',
   date: '',
-}
-
-/** 媒體庫文件信息 */
-interface MediaFile {
-  key: string
-  size: number
-  lastModified: string
-  etag: string
-  isUsed?: boolean
-  isMarked?: boolean
-}
-
-/** 媒體庫列表結果 */
-interface MediaListResult {
-  files: MediaFile[]
-  isTruncated: boolean
-  nextCursor: string
-}
-
-/** 存存儲配置（僅 picker 所需字段） */
-interface StorageConfig {
-  s3_public_url: string
-  s3_endpoint: string
-  s3_bucket: string
-}
-
-/** 圖片擴展名白名單 */
-const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif']
-
-/**
- * 媒體庫選擇器 Modal
- * - 可在任何圖片上傳區域打開
- * - 從 GET /admin/media 載入文件，GET /admin/storage/config 載入存儲配置
- * - 僅顯示圖片類型文件，支持搜索過濾
- */
-function MediaPickerModal({
-  open,
-  onClose,
-  onSelect,
-  onUpload,
-}: {
-  open: boolean
-  onClose: () => void
-  onSelect: (url: string) => void
-  /** 上傳新圖片（含壓縮流程），返回上傳後的 URL 列表 */
-  onUpload?: (files: File[]) => Promise<(string | null)[]>
-}) {
-  const [files, setFiles] = useState<MediaFile[]>([])
-  const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
-  const [storageConfig, setStorageConfig] = useState<StorageConfig | null>(null)
-  const [urlInput, setUrlInput] = useState('')
-  const [showUrlInput, setShowUrlInput] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const uploadInputRef = useRef<HTMLInputElement>(null)
-
-  // 打開時並行載入媒體文件與存儲配置
-  useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    setFiles([])
-    setSearch('')
-    setUrlInput('')
-    setShowUrlInput(false)
-    Promise.all([
-      api.get<MediaListResult>('/admin/media'),
-      api.get<StorageConfig>('/admin/media/config'),
-    ])
-      .then(([mediaRes, configRes]) => {
-        setFiles(mediaRes.data?.files ?? [])
-        if (configRes.data) setStorageConfig(configRes.data)
-      })
-      .catch(() => {
-        setFiles([])
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [open])
-
-  if (!open) return null
-
-  /** 構造圖片公共 URL */
-  const getImageUrl = (key: string): string => {
-    if (!storageConfig) return ''
-    const { s3_public_url, s3_endpoint, s3_bucket } = storageConfig
-    return s3_public_url
-      ? `${s3_public_url.replace(/\/$/, '')}/${key}`
-      : `${s3_endpoint}/${s3_bucket}/${key}`
-  }
-
-  /** 過濾：僅圖片 + 搜索關鍵字 */
-  const imageFiles = files.filter((f) => {
-    const ext = f.key.split('.').pop()?.toLowerCase() || ''
-    if (!IMAGE_EXTS.includes(ext)) return false
-    if (search && !f.key.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
-
-  /** 刷新媒體列表 */
-  const refreshMedia = async () => {
-    try {
-      const mediaRes = await api.get<MediaListResult>('/admin/media')
-      setFiles(mediaRes.data?.files ?? [])
-    } catch {
-      // 刷新失敗不影響使用
-    }
-  }
-
-  /** 處理文件上傳 */
-  const handleFileUpload = async (selectedFiles: FileList | null) => {
-    if (!selectedFiles || selectedFiles.length === 0 || !onUpload) return
-    setUploading(true)
-    try {
-      const fileArray = Array.from(selectedFiles)
-      const urls = await onUpload(fileArray)
-      const validUrls = urls.filter((u): u is string => !!u)
-      // 上傳完成後刷新列表
-      await refreshMedia()
-      // 如果只有一張圖，直接選中插入
-      if (validUrls.length === 1) {
-        onSelect(validUrls[0])
-        onClose()
-      }
-    } finally {
-      setUploading(false)
-      if (uploadInputRef.current) uploadInputRef.current.value = ''
-    }
-  }
-
-  /** 確認外鏈 URL 插入 */
-  const handleUrlConfirm = () => {
-    const trimmed = urlInput.trim()
-    if (!trimmed) return
-    onSelect(trimmed)
-    onClose()
-  }
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* 頭部 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h2 className="text-lg font-semibold">🖼️ 媒體庫選擇</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded"
-            title="關閉"
-          >
-            <span className="text-base">❌</span>
-          </button>
-        </div>
-
-        {/* 操作區：搜索 + 上傳 + 外鏈 */}
-        <div className="px-6 py-3 border-b space-y-2">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="🔍 搜索圖片..."
-              className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            {onUpload && (
-              <>
-                <input
-                  ref={uploadInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handleFileUpload(e.target.files)}
-                />
-                <button
-                  type="button"
-                  onClick={() => uploadInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                >
-                  {uploading ? '⏳ 上傳中...' : '⬆️ 上傳圖片'}
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowUrlInput(!showUrlInput)}
-              className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-accent transition-colors whitespace-nowrap"
-            >
-              🔗 外鏈
-            </button>
-          </div>
-          {/* 外鏈 URL 輸入區（可摺疊） */}
-          {showUrlInput && (
-            <div className="flex gap-2 pt-1">
-              <input
-                type="url"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="輸入圖片外鏈 URL（https://...）"
-                className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleUrlConfirm()
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleUrlConfirm}
-                disabled={!urlInput.trim()}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                插入
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* 圖片網格 */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <span className="inline-block animate-spin mr-2">🔄</span>
-              載入中...
-            </div>
-          ) : imageFiles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <span className="text-4xl mb-2">🖼️</span>
-              <p>暫無圖片</p>
-              {onUpload && <p className="text-xs mt-1">點擊上方「上傳圖片」按鈕添加</p>}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {imageFiles.map((file) => {
-                const url = getImageUrl(file.key)
-                const fileName = file.key.split('/').pop() || file.key
-                return (
-                  <button
-                    key={file.key}
-                    type="button"
-                    onClick={() => {
-                      if (url) {
-                        onSelect(url)
-                        onClose()
-                      }
-                    }}
-                    className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden hover:border-primary hover:shadow-md transition-all text-left group"
-                    title={fileName}
-                  >
-                    <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
-                      {url ? (
-                        <img
-                          src={url}
-                          alt={fileName}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none'
-                          }}
-                        />
-                      ) : (
-                        <span className="text-3xl">🖼️</span>
-                      )}
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium truncate">{fileName}</p>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
 }
 
 /** 將欄目樹渲染為帶縮進的 select 選項 */
@@ -915,6 +633,7 @@ export default function ContentEdit() {
   const [icoUrlInput, setIcoUrlInput] = useState('') // 縮略圖外鏈 URL 輸入框值
   const [icoMediaPickerOpen, setIcoMediaPickerOpen] = useState(false) // 縮略圖媒體庫選擇器
   const [quillImagePicker, setQuillImagePicker] = useState(false) // Quill 編輯器媒體庫選擇器
+  const [quillVideoPicker, setQuillVideoPicker] = useState(false) // Quill 編輯器視頻插入器
   const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
   // 保存原始數據快照（用於保存時比對修改字段）
   const originalDataRef = useRef<Record<string, unknown> | null>(null)
@@ -1266,7 +985,7 @@ export default function ContentEdit() {
                 [{ align: [] }],
                 ['blockquote', 'code-block'],
                 [{ list: 'ordered' }, { list: 'bullet' }],
-                ['link', 'image'],
+                ['link', 'image', 'video-picker'],
                 ['clean'],
                 ['html-source'], // 自定義按鈕：HTML 源碼模式
               ],
@@ -1274,6 +993,9 @@ export default function ContentEdit() {
                 image: function () {
                   // 直接打開增強版媒體庫選擇器（含上傳+外鏈+媒體庫三合一）
                   setQuillImagePicker(true)
+                },
+                'video-picker': function () {
+                  setQuillVideoPicker(true)
                 },
                 'html-source': function () {
                   // 切換 HTML 源碼模式
@@ -1317,7 +1039,8 @@ export default function ContentEdit() {
           .ql-editor ol li::marker { font-weight: bold; }
 
           /* HTML 源碼按鈕 */
-          .ql-toolbar .ql-html-source::after { content: "<>"; font-family: monospace; font-size: 14px; }
+          .ql-toolbar .ql-video-picker::after { content: "🎥"; font-size: 14px; }
+        .ql-toolbar .ql-html-source::after { content: "<>"; font-family: monospace; font-size: 14px; }
         `
         editorContainer.appendChild(styleEl)
 
@@ -1325,6 +1048,10 @@ export default function ContentEdit() {
         const htmlBtn = editorContainer.querySelector('.ql-html-source')
         if (htmlBtn) {
           htmlBtn.setAttribute('title', 'HTML 源碼模式')
+        }
+        const videoBtn = editorContainer.querySelector('.ql-video-picker')
+        if (videoBtn) {
+          videoBtn.setAttribute('title', '插入視頻')
         }
 
         // 設置已有內容
@@ -2089,6 +1816,18 @@ export default function ContentEdit() {
             const range = quillRef.current.getSelection()
             const index = range ? range.index : 0
             quillRef.current.insertEmbed(index, 'image', url)
+          }
+        }}
+      />
+
+      {/* Quill 編輯器視頻插入器 */}
+      <VideoPickerModal
+        open={quillVideoPicker}
+        onClose={() => setQuillVideoPicker(false)}
+        onInsert={(html) => {
+          if (quillRef.current) {
+            const range = quillRef.current.getSelection(true) ?? quillRef.current.getSelection()
+            quillRef.current.clipboard.dangerouslyPasteHTML(range?.index ?? quillRef.current.getLength(), html, 'user')
           }
         }}
       />

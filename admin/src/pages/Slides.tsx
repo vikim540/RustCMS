@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
+import MediaPickerModal from '../components/MediaPickerModal'
 import { useImageUpload } from '../hooks/useImageUpload'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
@@ -84,6 +85,8 @@ export default function Slides() {
   const mobileFileRef = useRef<HTMLInputElement>(null)
   // 壓縮對話框狀態：記錄待壓縮的圖片及其目標欄位
   const [pendingSlideImage, setPendingSlideImage] = useState<{ file: File; target: 'desktop' | 'mobile' } | null>(null)
+  // 媒體庫選擇器狀態（記錄當前選擇的目標欄位）
+  const [mediaPickerTarget, setMediaPickerTarget] = useState<'desktop' | 'mobile' | null>(null)
 
   // ─── 拖拽排序狀態 ────────────────────────────────────────
   const [draggingId, setDraggingId] = useState<number | null>(null)
@@ -798,6 +801,13 @@ export default function Slides() {
                     {uploading && uploadTarget === 'desktop' ? <span className="animate-spin">🔄</span> : <span>📷</span>}
                     {uploading && uploadTarget === 'desktop' ? '上傳中...' : '上傳'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setMediaPickerTarget('desktop')}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors"
+                  >
+                    🖼️ 媒體庫
+                  </button>
                 </div>
                 {/* 上傳進度條（已改為屏幕居中覆蓋層，見頁面底部 UploadProgressOverlay） */}
                 {form.pic && (
@@ -840,6 +850,13 @@ export default function Slides() {
                   >
                     {uploading && uploadTarget === 'mobile' ? <span className="animate-spin">🔄</span> : <span>📱</span>}
                     {uploading && uploadTarget === 'mobile' ? '上傳中...' : '上傳'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMediaPickerTarget('mobile')}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors"
+                  >
+                    🖼️ 媒體庫
                   </button>
                 </div>
                 {/* 上傳進度條（已改為屏幕居中覆蓋層，見頁面底部 UploadProgressOverlay） */}
@@ -984,6 +1001,20 @@ export default function Slides() {
         progress={progress}
         error={uploadError}
         onClearError={clearError}
+      />
+
+      {/* 媒體庫選擇器（複用統一組件） */}
+      <MediaPickerModal
+        open={mediaPickerTarget !== null}
+        onClose={() => setMediaPickerTarget(null)}
+        onSelect={(url) => {
+          if (mediaPickerTarget === 'desktop') {
+            setForm((f) => ({ ...f, pic: url }))
+          } else if (mediaPickerTarget === 'mobile') {
+            setForm((f) => ({ ...f, pic_mobile: url }))
+          }
+          setMediaPickerTarget(null)
+        }}
       />
     </div>
   )
