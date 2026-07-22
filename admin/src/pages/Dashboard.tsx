@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.10',
+    date: '2026-07-22 16:59:18',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 視頻面板修復 + CSP 安全頭 + 封面圖媒體庫\n\n📋 YouTube URL 解析修復\n• 雙重解析策略：正則優先 → URL API fallback\n• 新增 shorts/ 和 live/ 格式支援\n• videoId 嚴格格式驗證（11字符 [a-zA-Z0-9_-]）\n\n📋 iframe 結構修復\n• 生成 HTML 添加 referrerpolicy="strict-origin-when-cross-origin"\n• 預覽 iframe 同步添加 referrerPolicy 屬性\n• allow 屬性補全 web-share\n\n📋 CSP 安全頭\n• frame-src 加入 https://www.youtube.com 和 https://www.youtube-nocookie.com\n• 解除 YouTube iframe 預覽被瀏覽器阻擋問題\n\n📋 Slug pattern 修復\n• 修復 [a-zA-Z0-9\\-_/]+ 在 v 模式下的 Invalid character 錯誤\n• 改為 [-a-zA-Z0-9_/]+（hyphen 前綴避免轉義）\n\n📋 封面圖媒體庫\n• VideoPickerModal 封面圖欄位新增「🖼️ 媒體庫」按鈕\n• 複用 MediaPickerModal + useImageUpload 統一組件',
+  },
+  {
     version: 'v1.9.9',
     date: '2026-07-22 16:31:47',
     icon: '✨',
-    latest: true,
+    latest: false,
     changes: '✨ 編輯器視頻插入 + 組件化架構 + 幻燈片媒體庫\n\n📋 編輯器視頻面板\n• 新增 🎥 視頻按鈕到 Quill 工具列\n• Tab 1: YouTube 嵌入 — 自動 URL 轉換（watch?v= / youtu.be / embed/ 均支援）\n• YouTube 參數配置：自動播放(需靜音)、循環、控制條、相關影片、隱私模式、起止時間\n• Tab 2: 視頻連結 — 直接視頻 URL 生成 <video> 標籤（支援封面圖）\n• 實時預覽功能\n\n📋 組件化架構\n• 提取 MediaPickerModal 為獨立組件（admin/src/components/MediaPickerModal.tsx）\n• 新增 VideoPickerModal 獨立組件（admin/src/components/VideoPickerModal.tsx）\n• 統一 API 介面，支援跨頁面複用\n\n📋 幻燈片媒體庫\n• 新增/編輯幻燈片時可從媒體庫選擇圖片（桌面版 + 手機版均支援）\n• 複用 MediaPickerModal 統一組件，不重複造輪子',
   },
   {

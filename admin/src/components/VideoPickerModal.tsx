@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react'
+import MediaPickerModal from './MediaPickerModal'
+import { useImageUpload } from '../hooks/useImageUpload'
 
 /**
  * YouTube URL 轉換為 embed URL
@@ -7,16 +9,52 @@ import { useState, useMemo } from 'react'
  * - https://www.youtube.com/watch?v=VIDEO_ID
  * - https://youtu.be/VIDEO_ID
  * - https://www.youtube.com/embed/VIDEO_ID
+ * - https://www.youtube.com/shorts/VIDEO_ID
+ * - https://www.youtube.com/live/VIDEO_ID
  * - https://m.youtube.com/watch?v=VIDEO_ID
  * - https://www.youtube-nocookie.com/embed/VIDEO_ID
  *
  * 同時提取原 URL 中的 t / start 參數轉為 start 參數
+ *
+ * 解析策略：正則優先 → URL API fallback → 嚴格驗證 videoId 格式
  */
 function parseYouTubeUrl(url: string): { videoId: string; startTime?: number } | null {
-  const regex = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([a-zA-Z0-9_-]{11})/i
+  let videoId: string | null = null
+
+  // Method 1: 正則匹配（支援 watch?v=、embed/、v/、shorts/、live/、youtu.be/）
+  const regex = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([a-zA-Z0-9_-]{11})/i
   const match = url.match(regex)
-  if (!match) return null
-  const videoId = match[1]
+  if (match) {
+    videoId = match[1]
+  }
+
+  // Method 2: URL API fallback（正則未匹配時嘗試結構化解析）
+  if (!videoId) {
+    try {
+      const parsed = new URL(url.startsWith('http') ? url : `https://${url}`)
+      const host = parsed.hostname.replace(/^www\.|^m\./, '')
+
+      if (host === 'youtu.be') {
+        videoId = parsed.pathname.slice(1).split('/')[0] || null
+      } else if (host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
+        const vParam = parsed.searchParams.get('v')
+        if (vParam) {
+          videoId = vParam
+        } else {
+          const parts = parsed.pathname.split('/').filter(Boolean)
+          const knownPrefixes = ['embed', 'v', 'shorts', 'live']
+          if (parts.length >= 2 && knownPrefixes.includes(parts[0])) {
+            videoId = parts[1]
+          }
+        }
+      }
+    } catch {
+      // 不是合法 URL，放棄
+    }
+  }
+
+  // 驗證 videoId 格式（YouTube ID 固定 11 字符，由字母數字 _ - 組成）
+  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return null
 
   // 提取時間戳 t=30 或 start=30
   let startTime: number | undefined
@@ -90,6 +128,10 @@ export default function VideoPickerModal({
   const [videoUrl, setVideoUrl] = useState('')
   const [videoPoster, setVideoPoster] = useState('')
 
+  // 媒體庫選擇器（封面圖）
+  const [posterPickerOpen, setPosterPickerOpen] = useState(false)
+  const { uploadFiles } = useImageUpload()
+
   // 解析 YouTube URL
   const parsedYouTube = useMemo(() => {
     if (!ytUrl.trim()) return null
@@ -149,7 +191,7 @@ export default function VideoPickerModal({
       'picture-in-picture',
       'web-share',
     ].filter(Boolean).join('; ')
-    return `<iframe width="560" height="315" src="${embedUrl}" title="YouTube video player" frameborder="0" allow="${allowAttrs}" allowfullscreen></iframe>`
+    return `<iframe width="560" height="315" src="${embedUrl}" title="YouTube video player" frameborder="0" allow="${allowAttrs}" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`
   }
 
   /** 生成直接視頻 HTML */
@@ -184,6 +226,7 @@ export default function VideoPickerModal({
   const canInsert = activeTab === 'youtube' ? !!embedUrl : !!videoUrl.trim()
 
   return (
+    <>
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onClick={onClose}
@@ -364,8 +407,9 @@ export default function VideoPickerModal({
                         src={embedUrl}
                         title="預覽"
                         className="w-full h-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen
+                        referrerPolicy="strict-origin-when-cross-origin"
                       />
                     </div>
                   </div>
@@ -396,14 +440,24 @@ export default function VideoPickerModal({
                   封面圖（可選）
                   <span className="ml-1 text-xs text-muted-foreground font-normal">影片載入前顯示的圖片</span>
                 </label>
-                <input
-                  type="url"
-                  value={videoPoster}
-                  onChange={(e) => setVideoPoster(e.target.value)}
-                  placeholder="https://example.com/poster.jpg"
-                  className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  spellCheck={false}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={videoPoster}
+                    onChange={(e) => setVideoPoster(e.target.value)}
+                    placeholder="https://example.com/poster.jpg"
+                    className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPosterPickerOpen(true)}
+                    className="px-3 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:bg-accent transition-colors whitespace-nowrap"
+                    title="從媒體庫選擇封面圖"
+                  >
+                    🖼️ 媒體庫
+                  </button>
+                </div>
               </div>
 
               {/* 預覽 */}
@@ -445,6 +499,16 @@ export default function VideoPickerModal({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+      {/* 媒體庫選擇器 - 封面圖 */}
+      <MediaPickerModal
+        open={posterPickerOpen}
+        onClose={() => setPosterPickerOpen(false)}
+        onSelect={(url) => setVideoPoster(url)}
+        onUpload={async (files) => {
+          return await uploadFiles(files)
+        }}
+      />
+    </>
   )
 }

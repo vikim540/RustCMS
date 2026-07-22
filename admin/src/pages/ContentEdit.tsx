@@ -1469,7 +1469,7 @@ export default function ContentEdit() {
                   onChange={(e) => updateField('filename', e.target.value)}
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="URL別名，留空則用ID"
-                  pattern="[a-zA-Z0-9\-_/]+"
+                  pattern="[-a-zA-Z0-9_/]+"
                 />
               </div>
               <div>
