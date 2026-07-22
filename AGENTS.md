@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.8.8 | 2026-07-22 | Quill 編輯器載入修復（CSP script-src 缺少 cdnjs.cloudflare.com 導致腳本被阻擋）、全局錯誤通知一鍵複製重構（api.ts buildTechReport 捕獲調用堆疊/文件位置/行號/請求響應體，UI 保持簡短但複製內容包含完整技術診斷信息） |
 | v1.8.7 | 2026-07-22 | S3 憑證遷移 Secrets Store（s3_access_key/s3_secret_key）、遷移文件合併（15→1 冪等）、MIME 白名單安全修復（移除 SVG+空值繞過）、sanitize.ts regex 繞過修復、site.ts schema drift 修復、刪除移動端殘留、sorting 衝突修復、TypeScript 9 個預存編譯錯誤修復（ExportedHandler 泛型/js-md5 導入/ArrayBuffer/類型推斷） |
 | v1.8.6 | 2026-07-22 | Turnstile 密鑰遷移至 Secrets Store（修復 v1.7.0 遺留）。遷移 0010 清空了 D1 中 turnstile_secret_key 但代碼未同步更新，auth.ts 改為從 TURNSTILE_SECRET_STORE 讀取。wrangler.jsonc 新增綁定，重新啟用 Turnstile |
 | v1.8.5 | 2026-07-22 | 緊急修復：Turnstile secret key 為空導致所有賬號無法登錄。verifyTurnstile() 在 secret key 為空時返回 false 拒絕所有登錄，改為放行（return true）與網絡異常邏輯一致。臨時停用 Turnstile（turnstile_enabled=0） |

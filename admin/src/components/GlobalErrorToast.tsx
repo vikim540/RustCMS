@@ -95,14 +95,16 @@ function ErrorCard({ entry }: { entry: ErrorEntry }) {
   const [copied, setCopied] = useState(false)
   const hasDetail = Boolean(entry.detail)
 
-  /** 一鍵複製完整錯誤信息到剪貼板 */
+  /** 一鍵複製完整錯誤信息到剪貼板（結構化技術報告，非 UI 文字） */
   const copyErrorInfo = async () => {
+    // detail 已由 api.ts buildTechReport 構建為完整技術診斷報告
+    // 包含：請求方法/URL/Headers/Body、響應狀態/Body/錯誤碼、調用堆疊（文件位置+行號）
     const fullInfo = [
-      `=== 錯誤報告 ===`,
+      `=== 錯誤通知 ===`,
       `標題: ${entry.title}`,
-      `描述: ${entry.message}`,
+      `簡述: ${entry.message}`,
       `時間: ${entry.timestamp}`,
-      hasDetail ? `技術詳情:\n${entry.detail}` : '',
+      entry.detail ? `\n${entry.detail}` : '',
     ].filter(Boolean).join('\n')
 
     try {
@@ -110,7 +112,6 @@ function ErrorCard({ entry }: { entry: ErrorEntry }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // fallback: 創建臨時 textarea 複製
       const textarea = document.createElement('textarea')
       textarea.value = fullInfo
       textarea.style.position = 'fixed'

@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.8',
+    date: '2026-07-22 09:31:40',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 Quill 編輯器載入修復 + 全局錯誤通知一鍵複製重構\n\n📋 Quill 編輯器修復\n• CSP script-src 缺少 cdnjs.cloudflare.com 導致 Quill 腳本被瀏覽器阻擋\n• _headers CSP 新增 cdnjs.cloudflare.com 到 script-src 和 style-src\n\n📋 全局錯誤通知重構\n• api.ts 新增 buildTechReport() 函數，捕獲完整技術診斷信息\n• 一鍵複製內容：請求方法/URL/Headers(脫敏)/Body + 響應狀態/Body/錯誤碼 + 調用堆疊（文件位置+行號）\n• UI 展示保持簡短（標題+簡述），複製內容包含精準調試信息',
+  },
+  {
     version: 'v1.8.7',
     date: '2026-07-22 09:23:28',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '🔧 S3 憑證遷移 Secrets Store + 安全修復 + TS 編譯修復\n\n📋 S3 憑證遷移\n• s3_access_key / s3_secret_key 從 D1 遷移至 Cloudflare Secrets Store\n• wrangler.jsonc 新增 S3_ACCESS_KEY_STORE / S3_SECRET_KEY_STORE 綁定\n• storage.ts / config.ts / system.ts 全鏈路重構（S3Secrets 參數傳遞）\n• SecretsStoreSecretWritable 接口（補充 @cloudflare/workers-types 未聲明的 put()）\n• config.ts 虛擬配置注入（前端讀取 *** 遮罩，寫入路由至 Secrets Store）\n• 18 條 index.ts 路由同步更新\n\n📋 安全修復\n• MIME 白名單：移除 SVG（XSS 向量）、修復空值繞過\n• sanitize.ts：修復 regex 繞過（[/"]+ 分隔符屬性注入）\n• site.ts getSiteInitSql：3 處 schema drift 修復\n\n📋 清理與修復\n• 遷移文件合併（15 個 → 1 個冪等 0001_init.sql）\n• 刪除 open_wap / wap_domain / wap_site_dir 移動端殘留\n• ay_config sorting 衝突修復（水印→200-206、URL→210-216、webhook 去重）\n• TypeScript 9 個預存編譯錯誤修復（ExecutionContext/Queue/Scheduled handler 類型、js-md5 導入、ArrayBuffer、content.ts 類型推斷）',
   },
   {

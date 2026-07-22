@@ -140,12 +140,98 @@ function isOnLoginPage(): boolean {
   return window.location.pathname.replace(/\/+$/, '') === '/login'
 }
 
+/** 構建技術診斷報告（供一鍵複製用，非 UI 展示） */
+function buildTechReport(params: {
+  method: string
+  url: string
+  path: string
+  status?: number
+  statusText?: string
+  reqHeaders: Record<string, string>
+  reqBody?: unknown
+  respBody?: unknown
+  errorCode?: number
+  backendDetail?: string
+  networkError?: string
+}): string {
+  const { method, url, path, status, statusText, reqHeaders, reqBody, respBody, errorCode, backendDetail, networkError } = params
+
+  // 脫敏：移除 Authorization token 值，僅保留前 10 字元
+  const safeHeaders: Record<string, string> = {}
+  for (const [k, v] of Object.entries(reqHeaders)) {
+    if (k.toLowerCase() === 'authorization') {
+      safeHeaders[k] = v.slice(0, 17) + '...(redacted)'
+    } else {
+      safeHeaders[k] = v
+    }
+  }
+
+  // 請求體截斷（保留 2000 字元，足夠調試）
+  let bodyStr = ''
+  if (reqBody !== undefined) {
+    try {
+      bodyStr = typeof reqBody === 'string' ? reqBody : JSON.stringify(reqBody, null, 2)
+      if (bodyStr.length > 2000) bodyStr = bodyStr.slice(0, 2000) + '\n... (truncated)'
+    } catch {
+      bodyStr = '[unserializable]'
+    }
+  }
+
+  // 響應體截斷
+  let respStr = ''
+  if (respBody !== undefined) {
+    try {
+      respStr = typeof respBody === 'string' ? respBody : JSON.stringify(respBody, null, 2)
+      if (respStr.length > 2000) respStr = respStr.slice(0, 2000) + '\n... (truncated)'
+    } catch {
+      respStr = '[unserializable]'
+    }
+  }
+
+  // 調用堆疊（定位到前端源碼調用位置）
+  const stack = new Error().stack || ''
+  // 過濾掉 buildTechReport/request 內部幀，保留真正調用者
+  const stackLines = stack.split('\n')
+    .filter((line) => !line.includes('buildTechReport') && !line.includes('at request '))
+    .join('\n')
+
+  const lines: string[] = [
+    `=== 技術診斷報告 ===`,
+    `時間: ${new Date().toISOString()}`,
+    ``,
+    `--- 請求 ---`,
+    `Method: ${method}`,
+    `URL: ${url}`,
+    `Path: ${path}`,
+    `Headers: ${JSON.stringify(safeHeaders, null, 2)}`,
+  ]
+  if (bodyStr) lines.push(`Body: ${bodyStr}`)
+
+  if (status !== undefined) {
+    lines.push('', `--- 響應 ---`, `Status: ${status} ${statusText || ''}`)
+    if (errorCode !== undefined) lines.push(`錯誤碼 (code): ${errorCode}`)
+    if (backendDetail) lines.push(`後端詳情: ${backendDetail}`)
+    if (respStr) lines.push(`Body: ${respStr}`)
+  }
+
+  if (networkError) {
+    lines.push('', `--- 網絡錯誤 ---`, networkError)
+  }
+
+  lines.push('', `--- 調用堆疊 (前端源碼定位) ---`)
+  lines.push(stackLines)
+
+  return lines.join('\n')
+}
+
 /** API 請求封裝 */
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<ApiResponse<T>> {
   const token = getToken()
+  const method = options.method || 'GET'
+  const fullUrl = `${API_BASE}${path}`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Site-Id': getCurrentSiteId(),
@@ -156,13 +242,13 @@ async function request<T>(
   // 網絡層錯誤防護：fetch 本身失敗（斷網、DNS 失敗、CORS 阻擋等）
   let res: Response
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...options, headers })
+    res = await fetch(fullUrl, { ...options, headers })
   } catch (networkError) {
     const errMsg = networkError instanceof Error ? networkError.message : String(networkError)
     showGlobalError(
       '網絡連線錯誤',
       '無法連接到伺服器，請檢查網路連線後重試。',
-      `請求: ${options.method || 'GET'} ${path}\n錯誤: ${errMsg}`,
+      buildTechReport({ method, url: fullUrl, path, reqHeaders: headers, reqBody: options.body, networkError: `${networkError instanceof Error ? networkError.name : 'Error'}: ${errMsg}` }),
     )
     throw new Error(`網絡連線錯誤: ${errMsg}`)
   }
@@ -175,28 +261,23 @@ async function request<T>(
     // 觸發跳轉（僅一次，用鎖防抖）
     if (!onLogin && !isRedirectingToLogin) {
       isRedirectingToLogin = true
-      // 使用 CustomEvent 通知 App.tsx 中的監聯器，通過 React Router navigate 跳轉
-      // 比 window.location.href 更平滑，不會整頁刷新，保留路由狀態
       window.dispatchEvent(new CustomEvent('unauthorized'))
-      // 3 秒後自動解鎖：navigate 不會刷新頁面，鎖需手動重置以支持後續會話
       setTimeout(() => {
         isRedirectingToLogin = false
       }, 3000)
     }
     const errMsg = '登錄已過期,請重新登錄'
-    // 登錄頁的 401 由頁面自身顯示錯誤（如密碼錯誤），不重複彈全局通知
     if (!onLogin) {
-      showGlobalError('登錄已過期', errMsg, `請求路徑: ${path}\nHTTP 401 Unauthorized`)
+      const respBody = await res.json().catch(() => null)
+      showGlobalError('登錄已過期', errMsg, buildTechReport({ method, url: fullUrl, path, status: 401, statusText: 'Unauthorized', reqHeaders: headers, reqBody: options.body, respBody }))
     }
     throw new Error(errMsg)
   }
 
   // 403 = 權限拒絕 → 不登出，僅提示無權限
-  // 沿用 Layout 的 permissionDeniedCallback（已在頂部顯示 toast），不重複彈全局通知
   if (res.status === 403) {
     const json = await res.json().catch(() => ({ msg: '無權限訪問此功能' })) as ApiResponse<T>
     const msg = json.msg || '無權限訪問此功能'
-    // 觸發全局回調（Layout 會顯示 toast 提示）
     if (permissionDeniedCallback) {
       permissionDeniedCallback(msg)
     }
@@ -207,15 +288,10 @@ async function request<T>(
   if (res.status === 500) {
     const json = await res.json().catch(() => ({ msg: '伺服器內部錯誤' })) as ApiResponse<T> & { detail?: string }
     const msg = json.msg || '伺服器內部錯誤'
-    const detailParts = [
-      `請求: ${options.method || 'GET'} ${path}`,
-      `HTTP 500 Internal Server Error`,
-      `錯誤碼: ${json.code}`,
-    ]
-    if (json.detail) {
-      detailParts.push(`後端詳情: ${json.detail}`)
-    }
-    showGlobalError('伺服器錯誤', msg, detailParts.join('\n'))
+    showGlobalError('伺服器錯誤', msg, buildTechReport({
+      method, url: fullUrl, path, status: 500, statusText: 'Internal Server Error',
+      reqHeaders: headers, reqBody: options.body, respBody: json, errorCode: json.code, backendDetail: json.detail,
+    }))
     throw new Error(msg)
   }
 
@@ -223,25 +299,20 @@ async function request<T>(
   if (!res.ok) {
     const json = await res.json().catch(() => ({ msg: `HTTP ${res.status} ${res.statusText}` })) as ApiResponse<T> & { detail?: string }
     const msg = json.msg || `HTTP ${res.status} ${res.statusText}`
-    const detailParts = [
-      `請求: ${options.method || 'GET'} ${path}`,
-      `HTTP ${res.status} ${res.statusText}`,
-    ]
-    if (json.detail) {
-      detailParts.push(`後端詳情: ${json.detail}`)
-    }
-    showGlobalError('請求失敗', msg, detailParts.join('\n'))
+    showGlobalError('請求失敗', msg, buildTechReport({
+      method, url: fullUrl, path, status: res.status, statusText: res.statusText,
+      reqHeaders: headers, reqBody: options.body, respBody: json, errorCode: json.code, backendDetail: json.detail,
+    }))
     throw new Error(msg)
   }
 
   const json: ApiResponse<T> = await res.json()
   if (json.code !== 0) {
     const msg = json.msg || '請求失敗'
-    // 業務錯誤推送到全局通知，讓非開發者用戶也能看到（許多頁面的 catch 會靜默吞掉錯誤）
     showGlobalError(
       '請求失敗',
       msg,
-      `請求: ${options.method || 'GET'} ${path}\n錯誤碼: ${json.code}`,
+      buildTechReport({ method, url: fullUrl, path, status: res.status, statusText: res.statusText, reqHeaders: headers, reqBody: options.body, respBody: json, errorCode: json.code }),
     )
     throw new Error(msg)
   }
