@@ -383,7 +383,7 @@ app.get('/api/v1/contents/all', publicRateLimit(), async (c) => {
 app.get('/api/v1/contents/:idOrSlug', async (c) => {
   const idOrSlug = c.req.param('idOrSlug');
   const track = c.req.query('track') === '1';
-  return contentService.handleContentDetail(siteDB(c), idOrSlug, track);
+  return contentService.handleContentDetail(siteDB(c), idOrSlug, track, c.env.CONFIG_CACHE);
 });
 
 // ===== 前台公開接口 - 擴展模塊 =====
@@ -538,7 +538,6 @@ app.use('/api/v1/admin/contents/*', async (c, next) => {
 });
 app.use('/api/v1/admin/sorts/*', requireMenuPermission('/admin/content/sort'));         // M202 欄目管理
 app.use('/api/v1/admin/singles/*', requireMenuPermission('/admin/content/single'));     // M203 單頁管理
-app.use('/api/v1/admin/messages/*', requireMenuPermission('/admin/content/message'));   // M204 留言管理（舊，保留兼容）
 app.use('/api/v1/admin/forms/*', requireMenuPermission('/admin/forms/submissions'));  // M204 自定義表單（統一）
 app.use('/api/v1/admin/extfields/*', requireMenuPermission('/admin/content/extfield')); // M206 擴展字段
 app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M301 媒體庫
@@ -1050,7 +1049,13 @@ app.post('/api/v1/admin/tags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateTag(siteDB(c), body, currentSiteId(c));
+  const result = await extraService.handleCreateTag(siteDB(c), body, currentSiteId(c));
+  // 標籤變更影響文章內鏈渲染，清除內容緩存 + 標籤列表緩存
+  if (result.status === 200) {
+    await clearContentCache(c.env.API_CACHE);
+    await clearConfigCache(c.env.CONFIG_CACHE);
+  }
+  return result;
 });
 
 app.put('/api/v1/admin/tags/:id', async (c) => {
@@ -1058,44 +1063,24 @@ app.put('/api/v1/admin/tags/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateTag(siteDB(c), id, body);
+  const result = await extraService.handleUpdateTag(siteDB(c), id, body);
+  if (result.status === 200) {
+    await clearContentCache(c.env.API_CACHE);
+    await clearConfigCache(c.env.CONFIG_CACHE);
+  }
+  return result;
 });
 
 app.delete('/api/v1/admin/tags/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteTag(siteDB(c), id);
-});
-
-// ===== 後台管理接口 - 留言管理 =====
-app.get('/api/v1/admin/messages', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const params = new URL(c.req.url).searchParams;
-  return extraService.handleAdminListMessages(siteDB(c), params);
-});
-
-app.get('/api/v1/admin/messages/:id', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const id = Number(c.req.param('id')) || 0;
-  return extraService.handleAdminGetMessage(siteDB(c), id);
-});
-
-app.put('/api/v1/admin/messages/:id', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const id = Number(c.req.param('id')) || 0;
-  const body = await c.req.json();
-  return extraService.handleUpdateMessage(siteDB(c), id, body);
-});
-
-app.delete('/api/v1/admin/messages/:id', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteMessage(siteDB(c), id);
+  const result = await extraService.handleDeleteTag(siteDB(c), id);
+  if (result.status === 200) {
+    await clearContentCache(c.env.API_CACHE);
+    await clearConfigCache(c.env.CONFIG_CACHE);
+  }
+  return result;
 });
 
 // ===== 後台管理接口 - 自定義表單提交（統一表單系統）=====

@@ -503,9 +503,89 @@ CREATE TABLE IF NOT EXISTS ay_301_redirect (
   id INTEGER PRIMARY KEY AUTOINCREMENT, old_url TEXT, new_url TEXT, match_type TEXT DEFAULT 'exact',
   status TEXT DEFAULT '1', sorting INTEGER DEFAULT 255, create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
 );
--- 初始化系統配置（基本配置項）
+-- 索引（複製自 0001 Section 7 + 0002，確保查詢性能）
+CREATE INDEX IF NOT EXISTS idx_content_acode ON ay_content(acode);
+CREATE INDEX IF NOT EXISTS idx_content_date ON ay_content(date);
+CREATE INDEX IF NOT EXISTS idx_content_ext_contentid ON ay_content_ext(contentid);
+CREATE INDEX IF NOT EXISTS idx_content_filename ON ay_content(filename);
+CREATE INDEX IF NOT EXISTS idx_content_scode_status ON ay_content(scode, status);
+CREATE INDEX IF NOT EXISTS idx_content_sorting ON ay_content(sorting);
+CREATE INDEX IF NOT EXISTS idx_content_status ON ay_content(status);
+CREATE INDEX IF NOT EXISTS idx_content_urlname ON ay_content(urlname);
+CREATE INDEX IF NOT EXISTS idx_media_mark_path ON ay_media_mark(path);
+CREATE INDEX IF NOT EXISTS idx_sort_filename ON ay_content_sort(filename);
+CREATE INDEX IF NOT EXISTS idx_sort_pcode ON ay_content_sort(pcode);
+CREATE INDEX IF NOT EXISTS idx_sort_scode ON ay_content_sort(scode);
+CREATE INDEX IF NOT EXISTS idx_sort_urlname ON ay_content_sort(urlname);
+CREATE INDEX IF NOT EXISTS idx_form_sub_status ON ay_form_submission(status);
+CREATE INDEX IF NOT EXISTS idx_form_sub_create_time ON ay_form_submission(create_time);
+CREATE INDEX IF NOT EXISTS idx_form_sub_form_key ON ay_form_submission(form_key);
+CREATE INDEX IF NOT EXISTS idx_form_sub_name ON ay_form_submission(name);
+CREATE INDEX IF NOT EXISTS idx_form_sub_tel ON ay_form_submission(tel);
+-- 內容模型（必須，否則側邊欄無模型子菜單 + 內容管理不可用）
+INSERT OR IGNORE INTO ay_model (id, mcode, name, type, urlname, listtpl, contenttpl, status, issystem, create_time, update_time) VALUES
+  (1, '1', '專題', '1', 'about', NULL, NULL, '1', '1', datetime('now', '+8 hours'), datetime('now', '+8 hours')),
+  (2, '2', '文章', '2', 'list', NULL, NULL, '1', '1', datetime('now', '+8 hours'), datetime('now', '+8 hours'));
+-- 默認站點信息（避免 /api/v1/site 報錯 1004）
+INSERT OR IGNORE INTO ay_site (id, acode, name, title, subtitle, domain, lang) VALUES
+  (1, 'cn', 'default', '網站標題', '網站副標題', '', 'zh-hk');
+-- 默認公司信息（避免 /api/v1/company 返回空）
+INSERT OR IGNORE INTO ay_company (id, acode, name, address, contact, mobile, email, whatsapp) VALUES
+  (1, 'cn', '公司名稱', '公司地址', '聯繫人', '', 'admin@example.com', '');
+-- 擴展字段定義
+INSERT OR IGNORE INTO ay_extfield (id, mcode, name, field, type, description, value, scode, required, sorting, status) VALUES
+  (15, '2', '了解更多（WhatsApp）', 'ext_content_whatsapp', '1', '', '', '', '0', 1, '1');
+-- 初始化系統配置（完整配置項，與 0001_init.sql 對齊）
 INSERT OR IGNORE INTO ay_config (name, value, type, sorting, description) VALUES
-  ('mail_enabled', '1', '2', 200, '郵件通知開關'),
-  ('webhook_enabled', '1', '2', 201, 'Webhook通知開關');
+  ('message_check_code','1','1',20,'留言驗證碼'),
+  ('message_send_mail','1','1',21,'留言發送郵件'),
+  ('message_send_to','','2',22,'留言接收郵箱'),
+  ('message_verify','1','1',23,'留言審核'),
+  ('message_status','1','1',24,'留言狀態'),
+  ('form_check_code','1','1',25,'表單驗證碼'),
+  ('form_status','1','1',26,'表單狀態'),
+  ('form_send_mail','0','1',27,'表單發送郵件'),
+  ('comment_send_mail','0','1',28,'評論發送郵件'),
+  ('admin_check_code','1','1',30,'後台驗證碼'),
+  ('lock_count','5','2',31,'登錄失敗鎖定次數'),
+  ('lock_time','900','2',32,'鎖定時間(秒)'),
+  ('ip_deny','','2',33,'IP黑名單'),
+  ('ip_allow','','2',34,'IP白名單'),
+  ('turnstile_enabled','0','1',35,'登錄人機驗證開關'),
+  ('turnstile_site_key','','2',36,'Turnstile 站點密鑰'),
+  ('api_open','1','1',40,'API開關'),
+  ('api_auth','0','1',41,'API認證'),
+  ('api_appid','','2',42,'API AppID'),
+  ('api_secret','','2',43,'API Secret'),
+  ('api_cors_origins','','2',44,'API CORS域名'),
+  ('smtp_server','','2',50,'SMTP伺服器'),
+  ('smtp_port','465','2',51,'SMTP端口'),
+  ('smtp_ssl','1','1',52,'SMTP SSL'),
+  ('smtp_username','','2',53,'SMTP用戶名'),
+  ('smtp_password','','2',54,'SMTP密碼'),
+  ('mail_enabled','1','1',55,'郵件通知總開關'),
+  ('webhook_enabled','1','1',56,'Webhook通知總開關'),
+  ('webhook_url','','2',57,'Webhook推送地址'),
+  ('webhook_message','1','1',58,'留言推送開關'),
+  ('webhook_form','0','1',59,'表單推送開關'),
+  ('webhook_comment','0','1',60,'評論推送開關'),
+  ('google_verification','','2',61,'Google驗證碼'),
+  ('bing_verification','','2',62,'Bing驗證碼'),
+  ('storage_type','r2','2',70,'存儲類型(r2/s3)'),
+  ('s3_endpoint','','2',71,'S3/R2 端點'),
+  ('s3_bucket','','2',74,'S3/R2 存儲桶'),
+  ('s3_region','auto','2',75,'S3/R2 區域'),
+  ('s3_public_url','','2',76,'S3/R2 公開URL'),
+  ('mail_provider','mailchannels','2',90,'郵件服務(mailchannels/resend)'),
+  ('mail_api_key','','2',91,'郵件服務API Key'),
+  ('mail_from','','2',92,'發件人地址'),
+  ('mail_from_name','CMS 系統','2',93,'發件人名稱'),
+  ('url_rule_type','2','2',210,'URL規則模式'),
+  ('url_break_char','_','2',211,'URL分隔符'),
+  ('url_index_404','0','1',212,'首頁404跳轉'),
+  ('tpl_html_dir','html','2',213,'模板HTML目錄'),
+  ('gzip','1','1',214,'GZIP壓縮'),
+  ('content_tags_replace_num','3','2',215,'內容關鍵詞替換次數'),
+  ('pagesize','15','2',216,'默認分頁大小');
   `;
 }

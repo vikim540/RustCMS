@@ -2,13 +2,14 @@
  * 內容管理服務
  * CRUD + 軟刪除 + 定時發布 + 子孫欄目篩選
  */
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
 import { getDescendantScodes } from './sort';
 import { handleSaveContentExt } from './model';
 import { nowStr } from '../utils/datetime';
 import { sanitizeHtml, stripHtmlTags } from '../utils/sanitize';
+import { applyTagLinks, type TagLink } from '../utils/tagLink';
 
 /** P2: 字段長度限制（合理略寬，新聞網站場景） */
 const FIELD_LENGTH_LIMITS: Record<string, number> = {
@@ -183,6 +184,7 @@ export async function handleContentDetail(
   db: D1Database,
   idOrSlug: string,
   track: boolean,
+  kv?: KVNamespace,
 ): Promise<Response> {
   const isNumericId = /^\d+$/.test(idOrSlug);
   let content: Record<string, unknown> & { visits?: number; id?: number } | null;
@@ -258,6 +260,39 @@ export async function handleContentDetail(
   // v1.9.11+: 提取 FAQ 結構化數據（FAQPage JSON-LD）
   // 解析 content HTML 中的 <details class="faq-item"> 塊，生成 JSON-LD 供前端 SEO 使用
   const faqJson = extractFaqJson((content.content as string) || '')
+
+  // v1.9.17+: 文章內鏈替換（關鍵詞 → <a> 超連結）
+  // 讀取 ay_tags 標籤列表（長詞優先）和 content_tags_replace_num 配置項
+  // 在返回正文前執行五步預佔位替換，已有 <a>/<pre>/<code> 等 HTML 區塊被保護
+  const rawContent = (content.content as string) || ''
+  if (rawContent) {
+    try {
+      // 查詢標籤（按 name 長度降序，長詞優先匹配）
+      const tagRows = await db.prepare(
+        "SELECT name, link FROM ay_tags WHERE name IS NOT NULL AND name != '' AND link IS NOT NULL AND link != '' ORDER BY length(name) DESC",
+      ).all<{ name: string; link: string }>()
+
+      if (tagRows.results.length > 0) {
+        // 讀取替換次數配置（默認 3）
+        let maxReplace = 3
+        if (kv) {
+          const configVal = await kv.get('config:all')
+          if (configVal) {
+            try {
+              const configs = JSON.parse(configVal) as Record<string, string>
+              const parsed = parseInt(configs['content_tags_replace_num'] || '3', 10)
+              if (parsed > 0) maxReplace = parsed
+            } catch { /* KV 數據損壞，使用默認值 */ }
+          }
+        }
+
+        const tags: TagLink[] = tagRows.results.map((t) => ({ name: t.name, link: t.link }))
+        content.content = applyTagLinks(rawContent, tags, maxReplace)
+      }
+    } catch {
+      // 內鏈替換失敗不影響正文返回，保留原始 content
+    }
+  }
 
   return okData({ content, prev, next, faqJson }, '成功');
 }

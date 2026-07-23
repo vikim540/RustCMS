@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.16**（2026-07-23）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.17**（2026-07-23）
 
 
 ## 版本更新記錄（憑證）
@@ -9,7 +9,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
-| v1.9.16 | 2026-07-23 | FAQ HTML 結構與 Nuxt 前端 CSS 統一 + microdata 完善 + extractFaqJson 正則修復。FAQ 容器 class 從 `faq-group` 改為 `faq`（匹配前端 Nuxt CSS），新增 `faq-question`/`faq-title`/`faq-answer` 包裝元素（summary 內 h3.faq-title itemprop=name，div.faq-answer itemprop=acceptedAnswer 包裝 div itemprop=text），每層帶完整 microdata 屬性（FAQPage→Question→Answer），FaqPickerModal.tsx + faqPlugin.ts + content.ts + README.md 全部同步更新，修復 extractFaqJson answer 正則隱藏 bug（inner 變量不含 </details>，移除後主路徑恢復匹配），clipboard matcher 向後兼容舊 faq-group 格式，Quill blot name 保持 faq-group-block（D1 已存文章 Delta 不可更改） |
+| v1.9.17 | 2026-07-23 | 文章內鏈功能實現 + 標籤管理更名 + 留言系統遺留清理。新建 `src/utils/tagLink.ts` 五步預佔位替換引擎（參考 PbootCMS Go 改進版：保護 HTML→去重→長詞優先→預佔位→還原），`handleContentDetail` 新增 kv 參數讀取 `content_tags_replace_num` 配置（默認 3）+ 查詢 `ay_tags` 按 `length(name) DESC` 排序，標籤 CRUD 後清除內容+標籤列表緩存（`clearContentCache` + `clearConfigCache`），前端「標籤管理」全面更名為「文章內鏈」（側邊欄/頁面/對話框/表頭），Settings 新增「SEO 內鏈配置」分組（sorting 210-219），刪除 Messages.tsx 頁面 + `/messages` 路由 + 4 條 messages API 路由 + extra.ts 中 6 個留言 handler + parseUserAgent 函數（保留 ay_message 表數據安全），URL 安全驗證阻斷 javascript: 協議，自動添加 target="_blank" + rel="noopener noreferrer" |
 | v1.9.15 | 2026-07-23 | 回收站統一 + 共用工具函數提取 + 型別錯誤修復。Contents.tsx 的回收站 tab 改為連結到 /trash（攜帶 mcode 篩選），移除重複的 handleRestore/handlePermanentDelete/isTrash 邏輯，Category 接口 + flattenCategories + getPageNumbers 提取到 lib/utils.ts（4 個文件共用），DeleteConfirmModal 抽取為獨立組件，後端 handleListTrashedContents 新增 mcode 子查詢篩選，修復 videoPlugin.ts（null→undefined）和 ContentEdit.tsx（window.Quill 非空斷言 + dangerouslyPasteHTML 型別斷言）v1.9.13 遺留型別錯誤 |
 | v1.9.13 | 2026-07-23 | FAQ 群組化 + 微數據 + 列表清理 + 編輯器插件化。FAQ 從獨立 `<details>` 改為整組 `<div class="faq-group" itemscope itemtype="...FAQPage">` 包裝為單一 BlockEmbed（修復多項間空 `<p><br/></p>`）、加入 Google microdata 屬性（itemprop=mainEntity/name/acceptedAnswer/text，雙重 SEO：microdata + JSON-LD）、保存時 cleanupQuillHtml 移除 Quill 專有屬性（data-list/ql-ui/contenteditable）、編輯器二次開發功能抽取到 `admin/src/lib/quill/` 獨立模組（faqPlugin/videoPlugin/listPlugin/htmlCleanup + README 文檔） |
 | v1.9.12 | 2026-07-22 | iframe 保存修復 + 標籤輸入字段類型。sanitizeHtml 移除 iframe 危險標籤列表改為 YouTube 域名白名單驗證（sanitizeIframeSrc 函數，非白名單 src 替換為 #）、Quill CustomVideoBlot 覆蓋內建 video blot 保留完整 iframe 屬性（title/allow/referrerpolicy/width/height）、clipboard matcher 同時處理 FAQ 和 iframe 元素、新增擴展字段類型 type=11「標籤輸入（帶歷史）」複用 TagInput 組件（多值氣泡標籤+批量導入+歷史標籤點擊補充）、後端新增 GET /admin/extfields/:id/history API（查詢 DISTINCT 歷史值按最近使用排序） |

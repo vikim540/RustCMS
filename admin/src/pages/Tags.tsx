@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
-/** 標籤數據結構 */
+/** 標籤數據結構（文章內鏈：關鍵詞 → 超連結自動替換） */
 interface TagItem {
   id: number
   name: string
@@ -37,7 +37,7 @@ export default function Tags() {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
 
-  /** 載入標籤列表 */
+  /** 載入內鏈標籤列表 */
   const fetchTags = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -78,7 +78,7 @@ export default function Tags() {
   /** 提交表單 */
   const handleSubmit = async () => {
     if (!form.name.trim()) {
-      setActionError('標籤名稱不能為空')
+      setActionError('關鍵詞不能為空')
       return
     }
 
@@ -106,7 +106,7 @@ export default function Tags() {
 
   /** 刪除標籤 */
   const handleDelete = async (id: number) => {
-    if (!window.confirm('確定要刪除此標籤嗎?')) return
+    if (!window.confirm('確定要刪除此內鏈關鍵詞嗎?')) return
     setActionLoading(id)
     try {
       await api.del(`/admin/tags/${id}`)
@@ -121,15 +121,20 @@ export default function Tags() {
   return (
     <div className="p-6">
       {/* 頁首 */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">標籤管理</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-2xl font-bold">文章內鏈</h1>
         <button
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
           <span className="mr-1">➕</span>
-          新增標籤
+          新增關鍵詞
         </button>
+      </div>
+      {/* 功能說明 */}
+      <div className="mb-6 flex items-start gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-md text-sm">
+        <span className="shrink-0 mt-0.5">💡</span>
+        <span>設置關鍵詞和對應連結，文章正文中的關鍵詞將自動替換為可點擊的超連結（每個關鍵詞最多替換次數可在「系統配置 → 基本配置」中調整）。</span>
       </div>
 
       {/* 錯誤提示 */}
@@ -146,14 +151,14 @@ export default function Tags() {
       {/* 空狀態 */}
       {!loading && tags.length === 0 && !error && (
         <>
-          <EmptyState icon="🏷️" text="尚未創建任何標籤" />
+          <EmptyState icon="🏷️" text="尚未創建任何內鏈關鍵詞" />
           <div className="flex justify-center -mt-16 pb-8">
             <button
               onClick={openCreate}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
             >
               <span className="mr-1">➕</span>
-              新增標籤
+              新增關鍵詞
             </button>
           </div>
         </>
@@ -167,7 +172,7 @@ export default function Tags() {
               <thead>
                 <tr className="border-b bg-secondary/50">
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">名稱</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">關鍵詞</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">連結</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">排序</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
@@ -236,7 +241,7 @@ export default function Tags() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h2 className="text-lg font-semibold">{editTarget ? '編輯標籤' : '新增標籤'}</h2>
+              <h2 className="text-lg font-semibold">{editTarget ? '編輯內鏈關鍵詞' : '新增內鏈關鍵詞'}</h2>
               <button
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
@@ -245,29 +250,31 @@ export default function Tags() {
               </button>
             </div>
             <div className="px-5 py-4 space-y-4">
-              {/* 名稱 */}
+              {/* 關鍵詞 */}
               <div>
                 <label className="block text-sm font-medium mb-1.5">
-                  名稱 <span className="text-destructive">*</span>
+                  關鍵詞 <span className="text-destructive">*</span>
                 </label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="請輸入標籤名稱"
+                  placeholder="文章正文中需自動連結的關鍵詞"
                   autoFocus
                 />
               </div>
               {/* 連結 */}
               <div>
-                <label className="block text-sm font-medium mb-1.5">連結</label>
+                <label className="block text-sm font-medium mb-1.5">
+                  連結 <span className="text-destructive">*</span>
+                </label>
                 <input
                   type="text"
                   value={form.link}
                   onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="標籤對應連結（可選）"
+                  placeholder="https://example.com（關鍵詞點擊後跳轉的 URL）"
                 />
               </div>
               {/* 排序 */}

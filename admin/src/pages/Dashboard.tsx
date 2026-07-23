@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.17',
+    date: '2026-07-23 18:30:00',
+    icon: '🔗',
+    latest: true,
+    changes: '🔗 文章內鏈功能實現 + 標籤管理更名 + 留言系統遺留清理\n\n📋 文章內鏈替換引擎（核心功能）\n• 新建 src/utils/tagLink.ts — 五步預佔位替換算法（參考 PbootCMS Go 改進版）\n• Step 1: 保護 HTML 區塊（<a>/<pre>/<code>/所有標籤 → 佔位符）\n• Step 2: 去重同名標籤（修復 PHP strpos bug）\n• Step 3: 長詞優先（移除被更長 name 包含的短標籤）\n• Step 4: 預佔位替換（關鍵詞 → 佔位符，限制每詞 N 次）\n• Step 5: 還原佔位符 → <a> 標籤 + 還原保護的 HTML\n• URL 安全驗證（僅 http/https/相對路徑，阻斷 javascript:）\n• 自動添加 target="_blank" + rel="noopener noreferrer"\n\n📋 後端集成\n• handleContentDetail 新增 kv 參數，讀取 content_tags_replace_num 配置（默認 3）\n• 查詢 ay_tags 按 length(name) DESC 排序（長詞優先匹配）\n• 標籤 CRUD 後自動清除內容邊緣緩存（clearContentCache）\n• 替換失敗不影響正文返回（try/catch 保護）\n\n📋 前端更名（標籤管理 → 文章內鏈）\n• 側邊欄：🏷️ 標籤管理 → 🔗 文章內鏈\n• 頁面標題、對話框、表頭、按鈕文案全部更新\n• 新增功能說明提示框（解釋關鍵詞自動替換機制）\n\n📋 系統配置\n• Settings 新增「SEO 內鏈配置」分組（sorting 210-219）\n• content_tags_replace_num 配置項可在前端調整替換次數\n\n📋 留言系統遺留清理\n• 刪除 admin/src/pages/Messages.tsx 頁面\n• 移除 App.tsx 中 /messages 路由\n• 移除 index.ts 中 4 條 messages API 路由 + 權限中間件\n• 移除 extra.ts 中 6 個留言 handler + parseUserAgent 函數\n• 保留 ay_message 表（數據安全，不刪除歷史數據）',
+  },
+  {
     version: 'v1.9.16',
     date: '2026-07-23 09:59:32',
     icon: '❓',
-    latest: true,
+    latest: false,
     changes: '❓ FAQ HTML 結構與 Nuxt 前端 CSS 統一 + microdata 完善 + extractFaqJson 正則修復\n\n📋 HTML 結構統一（匹配前端 CSS）\n• faq-group → faq 容器 class（與 Nuxt 前端 .faq CSS 完全匹配）\n• 新增 faq-question / faq-title / faq-answer 包裝元素\n• summary 內改用 h3.faq-title（itemprop=name）\n• 答案用 div.faq-answer（itemprop=acceptedAnswer）包裝 div(itemprop=text)\n\n📋 微數據 microdata 完善\n• 每層元素都帶 itemscope/itemtype/itemprop（FAQPage → Question → Answer）\n• 前端 Nuxt 可直接讀取 HTML microdata 做 SEO（無需 JS 解析）\n• 後端 extractFaqJson 另生成 JSON-LD（雙重 SEO 覆蓋）\n\n📋 extractFaqJson 正則表達式修復（隱藏 bug）\n• answer 正則舊版含 </details> 但 inner 變量不含此標籤（被外層正則消耗）\n• 主路徑永遠不匹配，一直走 fallback（結果正確但主路徑死代碼）\n• 修正：移除 </details>，正則改為匹配到 faq-answer 閉合 </div>\n\n📋 向後兼容\n• clipboard matcher 同時匹配 .faq（新）和 .faq-group（舊）\n• Quill blot name 保持 faq-group-block（D1 已存文章 Delta 用此名，不可更改）\n• faqPlugin.ts value() 和 matchFaqElement() 同時處理新舊結構',
   },
   {
@@ -541,7 +548,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/singles', desc: '單頁列表', auth: false },
   { method: 'GET', path: '/api/v1/singles/:scode', desc: '單頁詳情', auth: false },
-  { method: 'GET', path: '/api/v1/tags', desc: '標籤列表', auth: false },
+  { method: 'GET', path: '/api/v1/tags', desc: '內鏈標籤列表', auth: false },
   { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
   { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },
