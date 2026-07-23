@@ -635,9 +635,10 @@ export async function handleListContentsByTag(
     return okData(tags, `找到 ${tags.length} 個標籤`);
   }
 
-  // 有搜索關鍵詞時，返回匹配標籤的文章列表（與 /contents 格式一致）
+  // 有搜索關鍵詞時，返回匹配標籤的文章列表（與 /contents 格式一致，額外補充欄目信息）
   const pagination = fromQuery(params);
-  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
+  // 欄目信息通過 LEFT JOIN 獲取：s = 當前欄目，ps = 父級欄目
+  const selectFields = `c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname, s.filename as sortfilename, s.name as sortname, s.pcode as sortpcode, ps.filename as parent_sortfilename, ps.name as parent_sortname`;
 
   const conditions = ["c.status = '1'", "c.scode != ''", 'c.tags LIKE ?'];
   const binds: (string | number)[] = [`%${q}%`];
@@ -648,9 +649,13 @@ export async function handleListContentsByTag(
   // 排序：置頂 > 推薦 > 頭條 > 排序 > 日期 > ID
   const orderClause = 'c.istop DESC, c.isrecommend DESC, c.isheadline DESC, c.sorting ASC, c.date DESC, c.id DESC';
 
-  const listSql = `SELECT ${summaryFields} FROM ay_content c WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
+  // LEFT JOIN ay_content_sort 兩次：s = 當前欄目（欄目pathname + 父級欄目id），ps = 父級欄目（父級欄目pathname）
+  const joinClause = `LEFT JOIN ay_content_sort s ON c.scode = s.scode LEFT JOIN ay_content_sort ps ON s.pcode = ps.scode`;
+
+  const listSql = `SELECT ${selectFields} FROM ay_content c ${joinClause} WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
+  // count 不需要 JOIN
   const countSql = `SELECT COUNT(*) as total FROM ay_content c WHERE ${whereClause}`;
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
