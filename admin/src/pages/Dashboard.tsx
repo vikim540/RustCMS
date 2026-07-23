@@ -50,21 +50,21 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.9.18',
-    date: '2026-07-23 20:00:00',
+    date: '2026-07-23 16:08:46',
     icon: '🏷️',
     latest: true,
-    changes: '🏷️ Cloudflare version_metadata 綁定 + 統一列表排序默認值\n\n📋 Version Metadata 綁定\n• wrangler.jsonc 新增 version_metadata 綁定（CF_VERSION_METADATA）\n• 新增 /api/v1/version 公開端點，返回 Worker 版本 ID/Tag/Timestamp\n• Dashboard 系統信息 Tab 新增「部署版本」區塊（即時展示當前部署版本）\n• Env 類型新增 WorkerVersionMetadata 聲明\n\n📋 統一列表排序（純前端改動）\n• 所有列表頁面 sorting 默認值從 0/255 統一為 1\n• Tags/Links/Singles 新增 inline input 排序編輯（失焦/Enter 保存）\n• 所有 inline input 添加 min={1} 約束\n• SortInput 組件驗證 v>=0 改為 v>=1\n• Contents 排序驗證 val<0 改為 val<1\n• Menus/FormManager 默認 255→1',
+    changes: '🏷️ Cloudflare version_metadata 綁定 + 統一列表排序 + 回收站批量操作\n\n📋 Version Metadata 綁定\n• wrangler.jsonc 新增 version_metadata 綁定（CF_VERSION_METADATA）\n• /admin/stats 響應合併 Worker 版本 ID/Tag/Timestamp（無公開 API）\n• Dashboard 系統信息 Tab 新增「部署版本」區塊（即時展示當前部署版本）\n• Env 類型新增 WorkerVersionMetadata 聲明\n\n📋 統一列表排序（純前端改動）\n• 所有列表頁面 sorting 默認值從 0/255 統一為 1\n• Tags/Links/Singles 新增 inline input 排序編輯（失焦/Enter 保存）\n• 所有 inline input 添加 min={1} 約束\n• SortInput 組件驗證 v>=0 改為 v>=1\n• Contents 排序驗證 val<0 改為 val<1\n• Menus/FormManager 默認 255→1\n\n📋 回收站批量操作\n• Trash.tsx 新增多選 checkbox（全選/單選/跨頁保留）\n• 批量還原（逐條 POST /restore）\n• 批量永久刪除（逐條 DELETE /permanent，二次確認）\n• 批量操作欄 + 選中行高亮 + 處理中狀態',
   },
   {
     version: 'v1.9.17',
-    date: '2026-07-23 18:30:00',
+    date: '2026-07-23 14:59:52',
     icon: '🔗',
     latest: false,
     changes: '🔗 文章內鏈功能實現 + 標籤管理更名 + 留言系統遺留清理\n\n📋 文章內鏈替換引擎（核心功能）\n• 新建 src/utils/tagLink.ts — 五步預佔位替換算法（參考 PbootCMS Go 改進版）\n• Step 1: 保護 HTML 區塊（<a>/<pre>/<code>/所有標籤 → 佔位符）\n• Step 2: 去重同名標籤（修復 PHP strpos bug）\n• Step 3: 長詞優先（移除被更長 name 包含的短標籤）\n• Step 4: 預佔位替換（關鍵詞 → 佔位符，限制每詞 N 次）\n• Step 5: 還原佔位符 → <a> 標籤 + 還原保護的 HTML\n• URL 安全驗證（僅 http/https/相對路徑，阻斷 javascript:）\n• 自動添加 target="_blank" + rel="noopener noreferrer"\n\n📋 後端集成\n• handleContentDetail 新增 kv 參數，讀取 content_tags_replace_num 配置（默認 3）\n• 查詢 ay_tags 按 length(name) DESC 排序（長詞優先匹配）\n• 標籤 CRUD 後自動清除內容邊緣緩存（clearContentCache）\n• 替換失敗不影響正文返回（try/catch 保護）\n\n📋 前端更名（標籤管理 → 文章內鏈）\n• 側邊欄：🏷️ 標籤管理 → 🔗 文章內鏈\n• 頁面標題、對話框、表頭、按鈕文案全部更新\n• 新增功能說明提示框（解釋關鍵詞自動替換機制）\n\n📋 系統配置\n• Settings 新增「SEO 內鏈配置」分組（sorting 210-219）\n• content_tags_replace_num 配置項可在前端調整替換次數\n\n📋 留言系統遺留清理\n• 刪除 admin/src/pages/Messages.tsx 頁面\n• 移除 App.tsx 中 /messages 路由\n• 移除 index.ts 中 4 條 messages API 路由 + 權限中間件\n• 移除 extra.ts 中 6 個留言 handler + parseUserAgent 函數\n• 保留 ay_message 表（數據安全，不刪除歷史數據）',
   },
   {
     version: 'v1.9.16',
-    date: '2026-07-23 09:59:32',
+    date: '2026-07-23 09:59:58',
     icon: '❓',
     latest: false,
     changes: '❓ FAQ HTML 結構與 Nuxt 前端 CSS 統一 + microdata 完善 + extractFaqJson 正則修復\n\n📋 HTML 結構統一（匹配前端 CSS）\n• faq-group → faq 容器 class（與 Nuxt 前端 .faq CSS 完全匹配）\n• 新增 faq-question / faq-title / faq-answer 包裝元素\n• summary 內改用 h3.faq-title（itemprop=name）\n• 答案用 div.faq-answer（itemprop=acceptedAnswer）包裝 div(itemprop=text)\n\n📋 微數據 microdata 完善\n• 每層元素都帶 itemscope/itemtype/itemprop（FAQPage → Question → Answer）\n• 前端 Nuxt 可直接讀取 HTML microdata 做 SEO（無需 JS 解析）\n• 後端 extractFaqJson 另生成 JSON-LD（雙重 SEO 覆蓋）\n\n📋 extractFaqJson 正則表達式修復（隱藏 bug）\n• answer 正則舊版含 </details> 但 inner 變量不含此標籤（被外層正則消耗）\n• 主路徑永遠不匹配，一直走 fallback（結果正確但主路徑死代碼）\n• 修正：移除 </details>，正則改為匹配到 faq-answer 閉合 </div>\n\n📋 向後兼容\n• clipboard matcher 同時匹配 .faq（新）和 .faq-group（舊）\n• Quill blot name 保持 faq-group-block（D1 已存文章 Delta 用此名，不可更改）\n• faqPlugin.ts value() 和 matchFaqElement() 同時處理新舊結構',
@@ -1467,6 +1467,18 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                       <td className="px-4 py-3">
                         <code className="font-mono text-foreground text-xs">placement: smart</code>
                         <span className="text-muted-foreground mx-2 text-xs">自動靠近 D1 數據中心</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span>🏷️</span>
+                          <span>Version Metadata</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-foreground text-xs">CF_VERSION_METADATA</code>
+                        <span className="text-muted-foreground mx-2 text-xs">Worker 版本元數據綁定（ID / Tag / Timestamp），合併在 /admin/stats 響應中</span>
                       </td>
                     </tr>
                   </tbody>
