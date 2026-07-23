@@ -525,12 +525,12 @@ app.use('/api/v1/admin/storage/*', requireSuperAdmin());
 app.use('/api/v1/admin/configs/*', requireMenuPermission('/admin/system/config'));
 app.use('/api/v1/admin/models/*', requireMenuPermission('/admin/content/model'));
 // 補齊: 內容管理及擴展內容路由的權限保護（防非授權用戶繞過前端直接調用 API）
-// 回收站相關路由（trash, restore, permanent）使用 M208 權限，其他使用 M201
+// 回收站相關路由（trash, restore, permanent, resources）使用 M208 權限，其他使用 M201
 app.use('/api/v1/admin/contents/*', async (c, next) => {
   const path = c.req.path;
   // 回收站相關路由 → M208 回收站權限
   if (path.endsWith('/contents/trash') ||
-      path.match(/\/contents\/\d+\/(restore|permanent)$/)) {
+      path.match(/\/contents\/\d+\/(restore|permanent|resources)$/)) {
     return requireMenuPermission('/admin/content/trash')(c, next);
   }
   // 其他內容管理路由 → M201 文章列表權限
@@ -638,11 +638,40 @@ app.post('/api/v1/admin/contents/:id/restore', async (c) => {
 });
 
 // 永久刪除 (使用 modelService 版本, 包含 status 守衛)
+// 支持 delete_resources=true 參數，一併清理 S3 靜態資源
 app.delete('/api/v1/admin/contents/:id/permanent', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
+  const deleteResources = c.req.query('delete_resources') === 'true';
+
+  // 如需清理靜態資源，先刪除 S3 圖片（DB 記錄仍存在，可查詢圖片 URL）
+  if (deleteResources) {
+    const s3Secrets = {
+      accessKeyStore: c.env.S3_ACCESS_KEY_STORE,
+      secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+    };
+    await storageService.handleCleanupContentResources(
+      siteDB(c), c.env.CONFIG_CACHE, id, s3Secrets,
+    );
+  }
+
+  // 然後永久刪除 DB 記錄
   return modelService.handlePermanentDeleteContent(siteDB(c), id);
+});
+
+// 獲取文章關聯的靜態資源（永久刪除前預覽）
+app.get('/api/v1/admin/contents/:id/resources', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const s3Secrets = {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE,
+    secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  };
+  return storageService.handleGetContentResources(
+    siteDB(c), c.env.CONFIG_CACHE, id, s3Secrets,
+  );
 });
 
 // ===== 後台管理接口 - 欄目管理 =====

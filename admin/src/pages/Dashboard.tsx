@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.14',
+    date: '2026-07-23 09:11:25',
+    icon: '🗑️',
+    latest: true,
+    changes: '🗑️ 回收站永久刪除靜態資源清理\n\n📋 靜態資源綁定邏輯\n• 文章永久刪除時可選擇一併刪除關聯的 S3 圖片資源\n• 自動提取文章所有圖片：封面圖(ico)、多圖(pics)、正文HTML中的img、擴展字段(ext_*)\n• 共用圖片安全保護：被其他文章引用的圖片自動跳過不刪除\n• 清理 ay_media_mark 表中已刪除文件的標記記錄\n\n📋 前端縮圖確認 Modal\n• 取代原 window.confirm，改為自定義彈窗\n• 縮圖網格展示所有關聯圖片（含來源標籤：封面圖/正文圖片/多圖/擴展字段）\n• 共用圖片顯示琥珀色邊框 + 「共用」徽章 + 引用詳情\n• 統計摘要：總數/共用數/將刪除數\n• 「一併刪除靜態資源」勾選框（默認勾選）\n• 圖片載入失敗時顯示佔位符\n\n📋 後端新增\n• GET /admin/contents/:id/resources — 預覽文章關聯資源（含引用檢查）\n• DELETE /admin/contents/:id/permanent?delete_resources=true — 永久刪除並清理 S3\n• extractArticleImages() — 從 ico/pics/content/ext_* 提取所有圖片\n• handleCleanupContentResources() — S3 批量刪除（共用跳過）',
+  },
+  {
     version: 'v1.9.13',
     date: '2026-07-23 08:15:45',
     icon: '📦',
-    latest: true,
+    latest: false,
     changes: '📦 FAQ 群組化 + 微數據 + 列表清理 + 編輯器插件化\n\n📋 FAQ 群組化 + Google 微數據（microdata）\n• FAQ 從獨立 <details> 改為整組 <div class="faq-group" itemscope itemtype="...FAQPage"> 包裝\n• 每個 <details> 加入 itemprop="mainEntity" itemscope itemtype="...Question" 微數據\n• <summary> 加 itemprop="name"，答案加 itemprop="acceptedAnswer"/"text"\n• 修復多個 FAQ 項之間產生空 <p><br/></p> 的問題（整組作為單一 BlockEmbed）\n• 後端 extractFaqJson 同時支援新格式（microdata）和舊格式（向後兼容）\n\n📋 有序列表 HTML 清理\n• 保存時自動移除 Quill 專有屬性（data-list、ql-ui 空標記 span、contenteditable="false"）\n• 確保 <ol>/<ul>/<li> 在 Nuxt 前端正確渲染序號\n\n📋 編輯器二次開發插件化\n• 抽取所有 Quill 自定義功能到 admin/src/lib/quill/ 獨立模組\n• faqPlugin.ts（FAQ 群組 blot + microdata + CSS + clipboard matcher）\n• videoPlugin.ts（視頻 iframe blot，保留完整屬性）\n• listPlugin.ts（有序列表懸掛縮進 CSS + softBreak 鍵盤綁定）\n• htmlCleanup.ts（HTML 清理函數 + 按鈕 CSS）\n• README.md（插件文檔 + 可移植性說明）',
   },
   {
@@ -537,6 +544,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/admin/contents/all-tags', desc: '歷史標籤列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/contents', desc: '新建內容', auth: true },
   { method: 'PUT', path: '/api/v1/admin/contents/:id', desc: '更新內容', auth: true },
+  { method: 'GET', path: '/api/v1/admin/contents/:id/resources', desc: '預覽文章關聯靜態資源（永久刪除前確認，v1.9.14+）', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/contents/:id/permanent', desc: '永久刪除 (?delete_resources=true 一併清理 S3 圖片，v1.9.14+)', auth: true },
   { method: 'GET', path: '/api/v1/admin/models/all', desc: '所有模型', auth: true },
   { method: 'GET', path: '/api/v1/admin/media', desc: '媒體列表', auth: true },
   { method: 'GET', path: '/api/v1/admin/media/config', desc: '媒體庫公開配置（非敏感字段）', auth: true },

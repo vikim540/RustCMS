@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.13**（2026-07-23）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.14**（2026-07-23）
 
 
 ## 版本更新記錄（憑證）
@@ -9,6 +9,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.9.14 | 2026-07-23 | 回收站永久刪除靜態資源清理。文章永久刪除時可選一併刪除關聯 S3 圖片（封面圖/正文圖/多圖/擴展字段圖），extractArticleImages 提取全部圖片 + findUsages 共用檢查（被其他文章引用的圖片跳過），前端自定義 Modal 取代 window.confirm（縮圖網格 + 來源標籤 + 共用徽章 + 統計摘要 + 勾選框），新增 GET /admin/contents/:id/resources 預覽 API + DELETE /admin/contents/:id/permanent?delete_resources=true 參數，清理 ay_media_mark 標記 |
 | v1.9.13 | 2026-07-23 | FAQ 群組化 + 微數據 + 列表清理 + 編輯器插件化。FAQ 從獨立 `<details>` 改為整組 `<div class="faq-group" itemscope itemtype="...FAQPage">` 包裝為單一 BlockEmbed（修復多項間空 `<p><br/></p>`）、加入 Google microdata 屬性（itemprop=mainEntity/name/acceptedAnswer/text，雙重 SEO：microdata + JSON-LD）、保存時 cleanupQuillHtml 移除 Quill 專有屬性（data-list/ql-ui/contenteditable）、編輯器二次開發功能抽取到 `admin/src/lib/quill/` 獨立模組（faqPlugin/videoPlugin/listPlugin/htmlCleanup + README 文檔） |
 | v1.9.12 | 2026-07-22 | iframe 保存修復 + 標籤輸入字段類型。sanitizeHtml 移除 iframe 危險標籤列表改為 YouTube 域名白名單驗證（sanitizeIframeSrc 函數，非白名單 src 替換為 #）、Quill CustomVideoBlot 覆蓋內建 video blot 保留完整 iframe 屬性（title/allow/referrerpolicy/width/height）、clipboard matcher 同時處理 FAQ 和 iframe 元素、新增擴展字段類型 type=11「標籤輸入（帶歷史）」複用 TagInput 組件（多值氣泡標籤+批量導入+歷史標籤點擊補充）、後端新增 GET /admin/extfields/:id/history API（查詢 DISTINCT 歷史值按最近使用排序） |
 | v1.9.11 | 2026-07-22 | FAQ 結構化數據功能。新增 FaqPickerModal 組件（多組問答輸入+預覽，生成 <details class="faq-item"> HTML）、Quill 自定義 FaqBlock BlockEmbed blot（clipboard matcher 確保載入已有內容時 FAQ 塊不丟失）、編輯器工具列新增 ❓ FAQ 按鈕、後端 extractFaqJson 函數解析 <details class="faq-item"> 生成 FAQPage JSON-LD、API 響應新增 faqJson 欄位供 Nuxt 前端注入 <head> SEO |

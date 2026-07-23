@@ -12,7 +12,7 @@
  *   s3_public_url  - 公共訪問 URL
  */
 import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
-import { okData, ok, err, createMeta } from '../utils/response';
+import { okData, ok, err, notFound, createMeta } from '../utils/response';
 import { type S3Config, type S3Object, s3PutObject, s3GetObject, s3DeleteObject, s3PresignedUrl, s3ListObjects } from '../utils/s3sig';
 import { getAllConfigs, clearConfigCache } from './config';
 
@@ -888,4 +888,197 @@ export async function handleCleanUnused(
   }
 
   return okData({ cleaned, skipped, total, errors: errors.slice(0, 20) }, msg);
+}
+
+// ============================================================================
+// 文章靜態資源管理（永久刪除時清理 S3 圖片）
+// ============================================================================
+
+/** 文章關聯的靜態資源（圖片） */
+export interface ContentResource {
+  /** S3 key（如 uploads/2026/07/23/abc.webp） */
+  key: string
+  /** 公開訪問 URL（用於前端縮圖預覽） */
+  url: string
+  /** 來源標籤（封面圖/正文圖片/多圖/擴展字段） */
+  source: string
+  /** 是否被其他內容引用 */
+  shared: boolean
+  /** 被哪些內容引用（如 shared=true，列出引用位置） */
+  sharedWith: string[]
+}
+
+/**
+ * 從文章中提取所有圖片資源（封面圖 + 正文圖 + 多圖 + 擴展字段圖）
+ * @returns Map<S3Key, Set<來源標籤>> — 用於去重和來源追蹤
+ */
+async function extractArticleImages(
+  db: D1Database,
+  contentId: number,
+): Promise<Map<string, Set<string>>> {
+  const imageMap = new Map<string, Set<string>>()
+
+  /** 添加圖片到 Map */
+  const addImage = (url: string, source: string) => {
+    if (!url || !url.includes('uploads/')) return
+    const np = normalizeFilePath(url)
+    if (!np) return
+    if (!imageMap.has(np)) imageMap.set(np, new Set())
+    imageMap.get(np)!.add(source)
+  }
+
+  const content = await db.prepare('SELECT * FROM ay_content WHERE id = ?')
+    .bind(contentId).first<Record<string, unknown>>()
+  if (!content) return imageMap
+
+  // 1. 封面圖（ico）
+  if (content.ico) addImage(String(content.ico), '封面圖')
+
+  // 2. 多圖（pics，逗號分隔）
+  if (content.pics) {
+    for (const p of String(content.pics).split(',')) {
+      addImage(p.trim(), '多圖')
+    }
+  }
+
+  // 3. 正文 HTML 中的 img src
+  if (content.content) {
+    const srcSet = new Set<string>()
+    extractSrcPaths(String(content.content), srcSet)
+    for (const key of srcSet) {
+      const cleanKey = key.replace(/^\/+/, '')
+      if (!imageMap.has(cleanKey)) imageMap.set(cleanKey, new Set())
+      imageMap.get(cleanKey)!.add('正文圖片')
+    }
+  }
+
+  // 4. 擴展字段中的圖片
+  const extRow = await db.prepare('SELECT * FROM ay_content_ext WHERE contentid = ?')
+    .bind(contentId).first<Record<string, unknown>>()
+  if (extRow) {
+    for (const [key, value] of Object.entries(extRow)) {
+      if (key.startsWith('ext_') && value) {
+        const val = String(value)
+        // 擴展字段可能是單個 URL、逗號分隔的多個 URL、或含 HTML img
+        const srcSet = new Set<string>()
+        extractSrcPaths(val, srcSet)
+        for (const s of srcSet) {
+          const cleanKey = s.replace(/^\/+/, '')
+          if (!imageMap.has(cleanKey)) imageMap.set(cleanKey, new Set())
+          imageMap.get(cleanKey)!.add('擴展字段')
+        }
+        for (const part of val.split(',')) {
+          addImage(part.trim(), '擴展字段')
+        }
+      }
+    }
+  }
+
+  return imageMap
+}
+
+/**
+ * 獲取文章關聯的所有靜態資源（含引用檢查）
+ * 用於永久刪除前的預覽確認
+ */
+export async function handleGetContentResources(
+  db: D1Database,
+  kv: KVNamespace,
+  contentId: number,
+  s3Secrets?: S3Secrets,
+): Promise<Response> {
+  const content = await db.prepare('SELECT id, title FROM ay_content WHERE id = ?')
+    .bind(contentId).first<{ id: number; title: string }>()
+  if (!content) return notFound('內容不存在')
+
+  const imageMap = await extractArticleImages(db, contentId)
+  if (imageMap.size === 0) {
+    return okData({ title: content.title, images: [] }, '成功')
+  }
+
+  const s3Config = await getS3Config(db, kv, s3Secrets)
+
+  const images: ContentResource[] = []
+  for (const [key, sources] of imageMap) {
+    // 檢查是否被其他內容引用
+    const usages = await findUsages(db, key)
+    const sharedUsages = usages.filter(
+      (u) => !(u.table === 'ay_content' && u.id === contentId),
+    )
+
+    // 構建公開 URL
+    const publicUrl = s3Config?.publicUrl
+      ? `${s3Config.publicUrl.replace(/\/$/, '')}/${key}`
+      : `/${key}`
+
+    images.push({
+      key,
+      url: publicUrl,
+      source: Array.from(sources).join(' + '),
+      shared: sharedUsages.length > 0,
+      sharedWith: sharedUsages.map((u) => `${u.table}#${u.id}(${u.field})`),
+    })
+  }
+
+  return okData({ title: content.title, images }, '成功')
+}
+
+/**
+ * 清理文章關聯的 S3 靜態資源
+ * 僅刪除未被其他內容引用的圖片，共享圖片跳過
+ *
+ * @returns 刪除結果統計
+ */
+export async function handleCleanupContentResources(
+  db: D1Database,
+  kv: KVNamespace,
+  contentId: number,
+  s3Secrets?: S3Secrets,
+): Promise<{ deleted: string[]; skipped: string[]; errors: string[] }> {
+  const s3Config = await getS3Config(db, kv, s3Secrets)
+  if (!s3Config) {
+    return { deleted: [], skipped: [], errors: ['S3 存儲未配置'] }
+  }
+
+  const imageMap = await extractArticleImages(db, contentId)
+  if (imageMap.size === 0) {
+    return { deleted: [], skipped: [], errors: [] }
+  }
+
+  const deleted: string[] = []
+  const skipped: string[] = []
+  const errors: string[] = []
+
+  for (const key of imageMap.keys()) {
+    // 檢查是否被其他內容引用
+    const usages = await findUsages(db, key)
+    const sharedUsages = usages.filter(
+      (u) => !(u.table === 'ay_content' && u.id === contentId),
+    )
+
+    if (sharedUsages.length > 0) {
+      // 被其他內容引用，跳過刪除
+      skipped.push(key)
+      continue
+    }
+
+    try {
+      await s3DeleteObject(s3Config, key)
+      deleted.push(key)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '未知錯誤'
+      errors.push(`${key}: ${msg}`)
+    }
+  }
+
+  // 清理已刪除文件的媒體標記
+  if (deleted.length > 0) {
+    await ensureMediaMarkTable(db)
+    for (const key of deleted) {
+      await db.prepare('DELETE FROM ay_media_mark WHERE path = ?')
+        .bind(key).run().catch(() => {})
+    }
+  }
+
+  return { deleted, skipped, errors }
 }
