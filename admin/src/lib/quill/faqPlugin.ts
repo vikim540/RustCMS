@@ -3,11 +3,13 @@
  *
  * 功能：在 Quill 編輯器中插入 FAQ 問答群組，生成帶 Google 微數據（microdata）的 HTML
  *
- * 生成的 HTML 結構：
- * <div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">
+ * 生成的 HTML 結構（與 Nuxt 前端 CSS 完全匹配）：
+ * <div class="faq" itemscope itemtype="https://schema.org/FAQPage">
  *   <details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
- *     <summary itemprop="name">問題文字</summary>
- *     <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+ *     <summary class="faq-question">
+ *       <h3 class="faq-title" itemprop="name">問題文字</h3>
+ *     </summary>
+ *     <div class="faq-answer" itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
  *       <div itemprop="text">答案 HTML</div>
  *     </div>
  *   </details>
@@ -55,11 +57,11 @@ export function registerFaqPlugin(): void {
   class FaqGroupBlock extends BlockEmbed {
     static blotName = 'faq-group-block'
     static tagName = 'DIV'
-    static className = 'faq-group'
+    static className = 'faq'
 
     static create(value: FaqGroupValue): HTMLElement {
       const node = document.createElement('div')
-      node.setAttribute('class', 'faq-group')
+      node.setAttribute('class', 'faq')
       node.setAttribute('itemscope', '')
       node.setAttribute('itemtype', 'https://schema.org/FAQPage')
 
@@ -71,11 +73,20 @@ export function registerFaqPlugin(): void {
         details.setAttribute('itemscope', '')
         details.setAttribute('itemtype', 'https://schema.org/Question')
 
+        // summary > h3.faq-title (itemprop="name")
         const summary = document.createElement('summary')
-        summary.setAttribute('itemprop', 'name')
-        summary.textContent = item.question || ''
+        summary.setAttribute('class', 'faq-question')
 
+        const title = document.createElement('h3')
+        title.setAttribute('class', 'faq-title')
+        title.setAttribute('itemprop', 'name')
+        title.textContent = item.question || ''
+
+        summary.appendChild(title)
+
+        // div.faq-answer (itemprop="acceptedAnswer") > div (itemprop="text")
         const answerWrap = document.createElement('div')
+        answerWrap.setAttribute('class', 'faq-answer')
         answerWrap.setAttribute('itemprop', 'acceptedAnswer')
         answerWrap.setAttribute('itemscope', '')
         answerWrap.setAttribute('itemtype', 'https://schema.org/Answer')
@@ -96,11 +107,14 @@ export function registerFaqPlugin(): void {
       const items: FaqItemData[] = []
       const detailsList = node.querySelectorAll('details.faq-item')
       detailsList.forEach((details) => {
+        // 優先取 h3.faq-title，否則取 summary 的文字內容（向後兼容舊格式）
+        const titleEl = details.querySelector('h3.faq-title')
         const summary = details.querySelector('summary')
+        // 優先取 itemprop="text" 的內容，否則取 .faq-answer 內容（向後兼容）
         const answerText = details.querySelector('[itemprop="text"]')
-        const answerDiv = answerText || details.querySelector('div')
+        const answerDiv = answerText || details.querySelector('.faq-answer') || details.querySelector('div')
         items.push({
-          question: summary ? summary.textContent || '' : '',
+          question: titleEl ? titleEl.textContent || '' : (summary ? summary.textContent || '' : ''),
           answer: answerDiv ? answerDiv.innerHTML : '',
         })
       })
@@ -113,7 +127,7 @@ export function registerFaqPlugin(): void {
 
 /**
  * FAQ clipboard matcher 處理函數
- * 處理 <div class="faq-group">（新格式）和獨立 <details class="faq-item">（舊格式向後兼容）
+ * 處理 <div class="faq">（新格式）/ <div class="faq-group">（舊格式）和獨立 <details class="faq-item">（向後兼容）
  *
  * @param el 剪貼簿 DOM 元素
  * @returns Delta ops 數組，或 null 表示不匹配
@@ -122,18 +136,27 @@ export function matchFaqElement(el: HTMLElement): unknown[] | null {
   const w = window as unknown as { Quill?: { import: (path: string) => unknown } }
   if (!w.Quill) return null
 
-  // FAQ 群組容器（新格式）— 整組作為單一 embed
-  if (el.tagName === 'DIV' && el.classList.contains('faq-group')) {
+  /** 從 details.faq-item 提取問答數據（新舊格式通用） */
+  const extractItems = (container: Element): FaqItemData[] => {
     const items: FaqItemData[] = []
-    el.querySelectorAll('details.faq-item').forEach((details) => {
+    container.querySelectorAll('details.faq-item').forEach((details) => {
+      // 問題：優先取 h3.faq-title，否則取 summary 文字（舊格式兼容）
+      const titleEl = details.querySelector('h3.faq-title')
       const summary = details.querySelector('summary')
+      // 答案：優先取 itemprop="text"，否則取 .faq-answer 或普通 div（舊格式兼容）
       const answerText = details.querySelector('[itemprop="text"]')
-      const answerDiv = answerText || details.querySelector('div')
+      const answerDiv = answerText || details.querySelector('.faq-answer') || details.querySelector('div')
       items.push({
-        question: summary ? summary.textContent || '' : '',
+        question: titleEl ? titleEl.textContent || '' : (summary ? summary.textContent || '' : ''),
         answer: answerDiv ? answerDiv.innerHTML : '',
       })
     })
+    return items
+  }
+
+  // FAQ 群組容器（新格式 .faq + 舊格式 .faq-group）— 整組作為單一 embed
+  if (el.tagName === 'DIV' && (el.classList.contains('faq') || el.classList.contains('faq-group'))) {
+    const items = extractItems(el)
     if (items.length > 0) {
       return [{ insert: { 'faq-group-block': { items } } }, { insert: '\n' }]
     }
@@ -141,18 +164,10 @@ export function matchFaqElement(el: HTMLElement): unknown[] | null {
 
   // 獨立 FAQ 項目（舊格式向後兼容）— 包裝為單項群組
   if (el.tagName === 'DETAILS' && el.classList.contains('faq-item')) {
-    const summary = el.querySelector('summary')
-    const answerText = el.querySelector('[itemprop="text"]')
-    const answerDiv = answerText || el.querySelector('div')
-    return [
-      { insert: { 'faq-group-block': {
-        items: [{
-          question: summary ? summary.textContent || '' : '',
-          answer: answerDiv ? answerDiv.innerHTML : '',
-        }],
-      } } },
-      { insert: '\n' },
-    ]
+    const items = extractItems(el)
+    if (items.length > 0) {
+      return [{ insert: { 'faq-group-block': { items } } }, { insert: '\n' }]
+    }
   }
 
   return null
@@ -160,8 +175,8 @@ export function matchFaqElement(el: HTMLElement): unknown[] | null {
 
 /** FAQ 群組 + 項目的編輯器內 CSS 樣式 */
 export const faqPluginCSS = `
-  /* FAQ 群組容器樣式（編輯器內） */
-  .ql-editor .faq-group {
+  /* FAQ 群組容器樣式（編輯器內，與 Nuxt 前端 .faq class 一致） */
+  .ql-editor .faq {
     border: 2px dashed #d1d5db;
     border-radius: 10px;
     padding: 8px 12px;
@@ -175,23 +190,28 @@ export const faqPluginCSS = `
     margin: 8px 0;
     background: #ffffff;
   }
-  .ql-editor details.faq-item > summary {
+  .ql-editor details.faq-item > summary.faq-question {
     cursor: pointer;
-    font-weight: 600;
-    color: #1f2937;
     list-style: none;
   }
-  .ql-editor details.faq-item > summary::-webkit-details-marker { display: none; }
-  .ql-editor details.faq-item > summary::before {
+  .ql-editor details.faq-item > summary.faq-question::-webkit-details-marker { display: none; }
+  .ql-editor details.faq-item > summary.faq-question::before {
     content: "▶";
     display: inline-block;
     margin-right: 6px;
     font-size: 10px;
     transition: transform 0.2s;
   }
-  .ql-editor details.faq-item[open] > summary::before { transform: rotate(90deg); }
-  .ql-editor details.faq-item[open] > summary { margin-bottom: 8px; }
-  .ql-editor details.faq-item > div {
+  .ql-editor details.faq-item[open] > summary.faq-question::before { transform: rotate(90deg); }
+  .ql-editor details.faq-item[open] > summary.faq-question { margin-bottom: 8px; }
+  .ql-editor details.faq-item .faq-title {
+    display: inline;
+    font-weight: 600;
+    font-size: 1em;
+    color: #1f2937;
+    margin: 0;
+  }
+  .ql-editor details.faq-item .faq-answer {
     font-size: 14px;
     line-height: 1.6;
     color: #4b5563;

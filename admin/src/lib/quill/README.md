@@ -31,10 +31,12 @@
 
 **生成 HTML 結構（含 microdata）：**
 ```html
-<div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">
+<div class="faq" itemscope itemtype="https://schema.org/FAQPage">
   <details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
-    <summary itemprop="name">問題文字</summary>
-    <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+    <summary class="faq-question">
+      <h3 class="faq-title" itemprop="name">問題文字</h3>
+    </summary>
+    <div class="faq-answer" itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
       <div itemprop="text">答案 HTML</div>
     </div>
   </details>

@@ -103,7 +103,7 @@ export async function handleListContents(
  *
  * 解析 <details class="faq-item">...</details> 塊（含 microdata 屬性）
  * 支援兩種格式：
- *   新格式：<div class="faq-group" itemscope itemtype="...FAQPage"><details class="faq-item" itemprop="mainEntity" ...>...</details></div>
+ *   新格式：<div class="faq" itemscope itemtype="...FAQPage"><details class="faq-item" itemprop="mainEntity" ...>...</details></div>
  *   舊格式：<details class="faq-item"><summary>Q</summary><div>A</div></details>
  * 生成符合 Google FAQPage 結構化數據規範的 JSON-LD
  *
@@ -132,10 +132,11 @@ function extractFaqJson(htmlContent: string): string | null {
     const question = summaryMatch ? stripHtmlTags(summaryMatch[1]) : ''
 
     // 提取答案：優先取 itemprop="text" 的內容（新格式），否則取 </summary> 之後的內容（舊格式）
-    const answerTextMatch = inner.match(/itemprop="text"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/details>/i)
+    // inner 是 <details> 標籤內部的內容（不含 </details>），正則只需匹配到 faq-answer 的閉合 </div>
+    const answerTextMatch = inner.match(/itemprop="text"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i)
     let answer: string
     if (answerTextMatch) {
-      // 新格式：<div itemprop="text">答案</div>
+      // 新格式：<div class="faq-answer"><div itemprop="text">答案</div></div>
       answer = stripHtmlTags(answerTextMatch[1])
     } else {
       // 舊格式：</summary> 之後的所有內容

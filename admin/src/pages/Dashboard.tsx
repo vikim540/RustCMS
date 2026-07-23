@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.16',
+    date: '2026-07-23 09:59:32',
+    icon: '❓',
+    latest: true,
+    changes: '❓ FAQ HTML 結構與 Nuxt 前端 CSS 統一 + microdata 完善 + extractFaqJson 正則修復\n\n📋 HTML 結構統一（匹配前端 CSS）\n• faq-group → faq 容器 class（與 Nuxt 前端 .faq CSS 完全匹配）\n• 新增 faq-question / faq-title / faq-answer 包裝元素\n• summary 內改用 h3.faq-title（itemprop=name）\n• 答案用 div.faq-answer（itemprop=acceptedAnswer）包裝 div(itemprop=text)\n\n📋 微數據 microdata 完善\n• 每層元素都帶 itemscope/itemtype/itemprop（FAQPage → Question → Answer）\n• 前端 Nuxt 可直接讀取 HTML microdata 做 SEO（無需 JS 解析）\n• 後端 extractFaqJson 另生成 JSON-LD（雙重 SEO 覆蓋）\n\n📋 extractFaqJson 正則表達式修復（隱藏 bug）\n• answer 正則舊版含 </details> 但 inner 變量不含此標籤（被外層正則消耗）\n• 主路徑永遠不匹配，一直走 fallback（結果正確但主路徑死代碼）\n• 修正：移除 </details>，正則改為匹配到 faq-answer 閉合 </div>\n\n📋 向後兼容\n• clipboard matcher 同時匹配 .faq（新）和 .faq-group（舊）\n• Quill blot name 保持 faq-group-block（D1 已存文章 Delta 用此名，不可更改）\n• faqPlugin.ts value() 和 matchFaqElement() 同時處理新舊結構',
+  },
+  {
     version: 'v1.9.15',
     date: '2026-07-23 09:35:45',
     icon: '🔄',
-    latest: true,
+    latest: false,
     changes: '🔄 回收站統一 + 共用工具函數提取 + 型別錯誤修復\n\n📋 回收站統一（消除重複造輪子）\n• Contents.tsx 的「回收站」tab 改為連結到 /trash 獨立頁面（攜帶 mcode 篩選）\n• 移除 Contents.tsx 中重複的 handleRestore/handlePermanentDelete/isTrash 邏輯\n• 前後端統一：所有永久刪除走 DeleteConfirmModal 組件\n\n📋 共用工具函數提取（DRY 原則）\n• Category 接口 + flattenCategories + getPageNumbers 提取到 lib/utils.ts\n• Trash.tsx、Contents.tsx、Singles.tsx、Logs.tsx 全部改為共用導入\n• 消除 4 個文件中的重複定義\n\n📋 DeleteConfirmModal 獨立組件\n• 從 Trash.tsx 抽取為 components/DeleteConfirmModal.tsx\n• 自包含邏輯：資源預覽 + 縮圖網格 + 共用檢查 + S3 清理\n• 可在任何永久刪除場景複用\n\n📋 後端 mcode 篩選\n• handleListTrashedContents 新增 mcode 參數（子查詢 ay_content_sort.mcode）\n• Trash.tsx 接受 ?mcode= 查詢參數，按模型過濾回收站\n\n📋 型別錯誤修復（v1.9.13 遺留）\n• videoPlugin.ts: getAttribute 返回 null → ?? undefined 轉換\n• ContentEdit.tsx: window.Quill 非空斷言 + dangerouslyPasteHTML 型別斷言',
   },
   {

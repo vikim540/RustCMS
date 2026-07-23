@@ -30,10 +30,12 @@ function escapeHtml(text: string): string {
 /**
  * 生成單個 FAQ 的 HTML（含 Google 微數據 microdata 屬性）
  *
- * 結構：
+ * 結構（與 Nuxt 前端 CSS 完全匹配）：
  * <details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
- *   <summary itemprop="name">問題</summary>
- *   <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+ *   <summary class="faq-question">
+ *     <h3 class="faq-title" itemprop="name">問題</h3>
+ *   </summary>
+ *   <div class="faq-answer" itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
  *     <div itemprop="text">答案</div>
  *   </div>
  * </details>
@@ -46,15 +48,14 @@ function escapeHtml(text: string): string {
 function buildFaqItemHtml(pair: FaqPair): string {
   const q = escapeHtml(pair.question.trim())
   const a = pair.answer.trim()
-  return `<details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question"><summary itemprop="name">${q}</summary><div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer"><div itemprop="text">${a}</div></div></details>`
+  return `<details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question"><summary class="faq-question"><h3 class="faq-title" itemprop="name">${q}</h3></summary><div class="faq-answer" itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer"><div itemprop="text">${a}</div></div></details>`
 }
 
 /**
  * 生成整組 FAQ 的 HTML（含 FAQPage 微數據容器）
  *
  * 結構：
- * <div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">
- *   <details class="faq-item" ...>...</details>
+ * <div class="faq" itemscope itemtype="https://schema.org/FAQPage">
  *   <details class="faq-item" ...>...</details>
  * </div>
  *
@@ -65,17 +66,19 @@ export function buildFaqGroupHtml(pairs: FaqPair[]): string {
   const validPairs = pairs.filter((p) => p.question.trim() && p.answer.trim())
   if (validPairs.length === 0) return ''
   const itemsHtml = validPairs.map(buildFaqItemHtml).join('')
-  return `<div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">${itemsHtml}</div>`
+  return `<div class="faq" itemscope itemtype="https://schema.org/FAQPage">${itemsHtml}</div>`
 }
 
 /**
  * FAQ 插入面板 Modal（可複用組件）
  *
  * 用戶可添加多組問答配對，插入後在編輯器中生成
- * <div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">
+ * <div class="faq" itemscope itemtype="https://schema.org/FAQPage">
  *   <details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
- *     <summary itemprop="name">Q</summary>
- *     <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+ *     <summary class="faq-question">
+ *       <h3 class="faq-title" itemprop="name">Q</h3>
+ *     </summary>
+ *     <div class="faq-answer" itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
  *       <div itemprop="text">A</div>
  *     </div>
  *   </details>
@@ -102,7 +105,7 @@ export default function FaqPickerModal({
 }: {
   open: boolean
   onClose: () => void
-  /** 插入完成後的回調，返回 HTML 字符串（整組 <div class="faq-group"> 塊） */
+  /** 插入完成後的回調，返回 HTML 字符串（整組 <div class="faq"> 塊） */
   onInsert: (html: string) => void
 }) {
   const [pairs, setPairs] = useState<FaqPair[]>([
