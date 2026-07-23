@@ -63,7 +63,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.9.19',
-    date: '2026-07-23 17:30:00',
+    date: '2026-07-23 17:20:23',
     icon: '🔍',
     latest: true,
     changes: '🔍 語義搜索自動索引 + AI 標籤建議 + Checkbox 美化 + Queue 監控\n\n📋 語義搜索自動索引（修復死代碼）\n• indexArticle/deleteArticleVector 已實現但從未調用 — 現已接入內容 CRUD\n• POST /contents → 發布時 ctx.waitUntil(indexArticle)\n• PUT /contents/:id → 更新時重新索引（草稿則刪除向量）\n• DELETE /contents/:id → 移入回收站時刪除向量\n• 永久刪除 → 清理向量\n• 非阻塞執行，失敗不影響內容操作\n\n📋 AI 標籤建議\n• 新增 POST /admin/contents/ai-tags 端點（Workers AI mistral-7b）\n• ContentEdit 標籤區新增「🤖 AI 標籤建議」按鈕\n• 基於文章標題+內容生成 5-8 個標籤，自動去重合併\n\n📋 UI 優化\n• 標籤歷史按鈕改為單行不換行 + 橫向滾動\n• 置頂/推薦/頭條 checkbox 美化（自定義 peer-checked 樣式）\n• 置頂=藍色 / 推薦=綠色 / 頭條=琥珀色，hover 效果\n\n📋 Queue 監控\n• Dashboard 系統信息 Tab 新增「定時發布隊列」區塊\n• 顯示待發布任務列表 + 剩餘時間倒計算\n• publish-queue / publish-dlq 狀態指示燈',
