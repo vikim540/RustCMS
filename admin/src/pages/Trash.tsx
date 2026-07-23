@@ -36,6 +36,7 @@ export default function Trash() {
   const [page, setPage] = useState(1)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [deleteModal, setDeleteModal] = useState<{ id: number; title: string } | null>(null)
+  const [batchDeleteModal, setBatchDeleteModal] = useState<{ id: number; title: string }[] | null>(null)
 
   // 批量操作狀態
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -123,7 +124,6 @@ export default function Trash() {
   /** 批量還原 */
   const handleBatchRestore = async () => {
     if (selectedIds.size === 0) return
-    if (!window.confirm(`確定要還原選中的 ${selectedIds.size} 項內容嗎?`)) return
     setBatchLoading(true)
     setError('')
     const ids = Array.from(selectedIds)
@@ -143,27 +143,13 @@ export default function Trash() {
     await fetchContents()
   }
 
-  /** 批量永久刪除（逐條調用，不清理 S3 資源） */
-  const handleBatchPermanentDelete = async () => {
+  /** 批量永久刪除 — 打開 DeleteConfirmModal（複用單條刪除的 UI 結構） */
+  const handleBatchPermanentDelete = () => {
     if (selectedIds.size === 0) return
-    if (!window.confirm(`確定要永久刪除選中的 ${selectedIds.size} 項內容嗎?\n\n⚠️ 此操作不可逆，刪除後無法恢復。\n（不會自動清理 S3 圖片資源，如需清理請逐條使用永久刪除）`)) return
-    setBatchLoading(true)
-    setError('')
-    const ids = Array.from(selectedIds)
-    let failed = 0
-    for (const id of ids) {
-      try {
-        await api.del(`/admin/contents/${id}/permanent`)
-      } catch {
-        failed++
-      }
-    }
-    setSelectedIds(new Set())
-    setBatchLoading(false)
-    if (failed > 0) {
-      setError(`批量永久刪除完成，失敗 ${failed} 項`)
-    }
-    await fetchContents()
+    const items = contents
+      .filter((c) => selectedIds.has(c.id))
+      .map((c) => ({ id: c.id, title: c.title }))
+    setBatchDeleteModal(items)
   }
 
   /** 清除選中（翻頁或刷新時保留跨頁選擇，僅手動清除） */
@@ -398,6 +384,19 @@ export default function Trash() {
           onClose={() => setDeleteModal(null)}
           onSuccess={() => {
             setDeleteModal(null)
+            fetchContents()
+          }}
+        />
+      )}
+
+      {/* 批量永久刪除確認 Modal（複用 DeleteConfirmModal 批量模式） */}
+      {batchDeleteModal && (
+        <DeleteConfirmModal
+          batchItems={batchDeleteModal}
+          onClose={() => setBatchDeleteModal(null)}
+          onSuccess={() => {
+            setBatchDeleteModal(null)
+            setSelectedIds(new Set())
             fetchContents()
           }}
         />
