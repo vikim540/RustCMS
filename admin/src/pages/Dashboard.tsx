@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.13',
+    date: '2026-07-23 08:15:45',
+    icon: '📦',
+    latest: true,
+    changes: '📦 FAQ 群組化 + 微數據 + 列表清理 + 編輯器插件化\n\n📋 FAQ 群組化 + Google 微數據（microdata）\n• FAQ 從獨立 <details> 改為整組 <div class="faq-group" itemscope itemtype="...FAQPage"> 包裝\n• 每個 <details> 加入 itemprop="mainEntity" itemscope itemtype="...Question" 微數據\n• <summary> 加 itemprop="name"，答案加 itemprop="acceptedAnswer"/"text"\n• 修復多個 FAQ 項之間產生空 <p><br/></p> 的問題（整組作為單一 BlockEmbed）\n• 後端 extractFaqJson 同時支援新格式（microdata）和舊格式（向後兼容）\n\n📋 有序列表 HTML 清理\n• 保存時自動移除 Quill 專有屬性（data-list、ql-ui 空標記 span、contenteditable="false"）\n• 確保 <ol>/<ul>/<li> 在 Nuxt 前端正確渲染序號\n\n📋 編輯器二次開發插件化\n• 抽取所有 Quill 自定義功能到 admin/src/lib/quill/ 獨立模組\n• faqPlugin.ts（FAQ 群組 blot + microdata + CSS + clipboard matcher）\n• videoPlugin.ts（視頻 iframe blot，保留完整屬性）\n• listPlugin.ts（有序列表懸掛縮進 CSS + softBreak 鍵盤綁定）\n• htmlCleanup.ts（HTML 清理函數 + 按鈕 CSS）\n• README.md（插件文檔 + 可移植性說明）',
+  },
+  {
     version: 'v1.9.12',
     date: '2026-07-22 17:45:30',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '🔧 iframe 保存修復 + 標籤輸入字段類型\n\n📋 iframe 保存問題修復\n• sanitizeHtml 不再將 iframe 列為危險標籤\n• 新增 YouTube 域名白名單驗證（youtube.com / youtube-nocookie.com）\n• 非白名單域名 iframe src 替換為 #（阻斷惡意嵌入）\n• Quill CustomVideoBlot 覆蓋內建 video blot，保留完整 iframe 屬性\n• clipboard matcher 同時處理 FAQ 和 iframe 元素\n\n📋 新增擴展字段類型 type=11「標籤輸入（帶歷史）」\n• 與文章標籤輸入完全相同的 TagInput 組件（多值氣泡標籤）\n• 支援 Enter/逗號添加標籤、退格刪除、批量導入\n• 歷史標籤快速補充（點擊添加，從已有內容查詢 DISTINCT 值）\n• 後端新增 GET /admin/extfields/:id/history API\n• 適用場景：風險警告、檢查類型等重複性文字內容',
   },
   {

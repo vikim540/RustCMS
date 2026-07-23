@@ -11,6 +11,11 @@ import FaqPickerModal from '../components/FaqPickerModal'
 import { TagInput } from '../components/TagInput'
 import { LoadingState } from '../components/StateDisplay'
 import { useImageUpload } from '../hooks/useImageUpload'
+// Quill 編輯器插件模組（admin/src/lib/quill/）
+import { registerFaqPlugin, matchFaqElement, faqPluginCSS } from '../lib/quill/faqPlugin'
+import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
+import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
+import { cleanupQuillHtml, toolbarButtonCSS } from '../lib/quill/htmlCleanup'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
 declare global {
@@ -1084,212 +1089,50 @@ export default function ContentEdit() {
 
         quillRef.current = quill
 
-        // ─── 註冊自定義 FAQ BlockEmbed blot ───
-        // <details class="faq-item"><summary>問題</summary><div>答案</div></details>
-        // 作為 BlockEmbed（不可行內編輯，整塊插入/刪除），保存時輸出原始 HTML
-        // 後端解析 class="faq-item" 生成 FAQPage JSON-LD 結構化數據
-        const BlockEmbed = window.Quill.import('blots/block/embed') as unknown as {
-          new (): { domNode: HTMLElement }
-          blotName: string
-          tagName: string
-          className: string
-        }
+        // ─── 註冊 Quill 編輯器插件（admin/src/lib/quill/）───
+        // FAQ 群組 BlockEmbed（含 Google microdata）
+        registerFaqPlugin()
+        // 視頻 iframe blot（保留完整屬性 title/allow/referrerpolicy）
+        registerVideoPlugin()
 
-        class FaqBlock extends BlockEmbed {
-          static blotName = 'faq-block'
-          static tagName = 'DETAILS'
-          static className = 'faq-item'
-
-          static create(value: { question: string; answer: string }): HTMLElement {
-            const node = document.createElement('details')
-            node.setAttribute('class', 'faq-item')
-
-            const summary = document.createElement('summary')
-            summary.textContent = value.question || ''
-
-            const answerDiv = document.createElement('div')
-            answerDiv.innerHTML = value.answer || ''
-
-            node.appendChild(summary)
-            node.appendChild(answerDiv)
-            return node
-          }
-
-          static value(node: HTMLElement): { question: string; answer: string } {
-            const summary = node.querySelector('summary')
-            const div = node.querySelector('div')
-            return {
-              question: summary ? summary.textContent || '' : '',
-              answer: div ? div.innerHTML : '',
-            }
-          }
-        }
-
-        window.Quill.register(FaqBlock, true)
-
-        // ─── 覆蓋內建 video blot，保留 iframe 完整屬性 ───
-        // Quill 內建 video blot 僅保留 src，其他屬性（title/allow/referrerpolicy 等）丟失
-        // 自定義 blot 接受 string（URL）或 object（含所有屬性）兩種值
-        // clipboard matcher 將 iframe 轉為帶完整屬性的 video embed
-        const VideoBlot = window.Quill.import('formats/video') as unknown as {
-          new (): { domNode: HTMLElement }
-          blotName: string
-          tagName: string
-          className: string
-        }
-
-        type VideoEmbedValue = {
-          src: string
-          title?: string
-          allow?: string
-          referrerpolicy?: string
-          width?: string
-          height?: string
-        }
-
-        class CustomVideoBlot extends VideoBlot {
-          static blotName = 'video'
-
-          static create(value: string | VideoEmbedValue): HTMLElement {
-            const src = typeof value === 'string' ? value : value.src
-            const node = document.createElement('iframe')
-            node.setAttribute('class', 'ql-video')
-            node.setAttribute('frameborder', '0')
-            node.setAttribute('allowfullscreen', 'true')
-            node.setAttribute('src', src)
-
-            // 保留額外屬性（僅 object 值時）
-            if (typeof value !== 'string') {
-              if (value.title) node.setAttribute('title', value.title)
-              if (value.allow) node.setAttribute('allow', value.allow)
-              if (value.referrerpolicy) node.setAttribute('referrerpolicy', value.referrerpolicy)
-              if (value.width) node.setAttribute('width', value.width)
-              if (value.height) node.setAttribute('height', value.height)
-            }
-            return node
-          }
-
-          static value(node: HTMLElement): string | VideoEmbedValue {
-            const src = node.getAttribute('src') || ''
-            const title = node.getAttribute('title')
-            const allow = node.getAttribute('allow')
-            const referrerpolicy = node.getAttribute('referrerpolicy')
-            const width = node.getAttribute('width')
-            const height = node.getAttribute('height')
-
-            // 有額外屬性時返回 object，否則返回 string（向後兼容）
-            if (title || allow || referrerpolicy || width || height) {
-              return { src, title, allow, referrerpolicy, width, height }
-            }
-            return src
-          }
-        }
-
-        window.Quill.register(CustomVideoBlot, true)
-
-        // clipboard matcher：解析 HTML 中的 <details class="faq-item"> 和 <iframe> 為對應 embed
-        // 確保 dangerouslyPasteHTML 載入已有內容時，FAQ 塊和視頻 iframe 不被丟棄或丟失屬性
+        // clipboard matcher：委託插件模組處理 FAQ 群組和視頻 iframe
+        // 確保 dangerouslyPasteHTML 載入已有內容時不丟失自定義元素
         quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node: Node, delta: unknown) => {
           const el = node as HTMLElement
 
-          // FAQ 問答塊
-          if (el.tagName === 'DETAILS' && el.classList.contains('faq-item')) {
-            const summary = el.querySelector('summary')
-            const div = el.querySelector('div')
+          // FAQ 群組 / 獨立 FAQ 項目（向後兼容）
+          const faqOps = matchFaqElement(el)
+          if (faqOps) {
             const Delta = window.Quill.import('delta') as unknown as {
               new (ops?: unknown[]): unknown
             }
-            return new Delta([
-              { insert: { 'faq-block': {
-                question: summary ? summary.textContent || '' : '',
-                answer: div ? div.innerHTML : '',
-              } } },
-              { insert: '\n' },
-            ])
+            return new Delta(faqOps)
           }
 
-          // 視頻 iframe — 保留完整屬性（title/allow/referrerpolicy 等）
-          if (el.tagName === 'IFRAME') {
-            const src = el.getAttribute('src') || ''
-            if (src) {
-              const Delta = window.Quill.import('delta') as unknown as {
-                new (ops?: unknown[]): unknown
-              }
-              return new Delta([
-                { insert: { video: {
-                  src,
-                  title: el.getAttribute('title') || undefined,
-                  allow: el.getAttribute('allow') || undefined,
-                  referrerpolicy: el.getAttribute('referrerpolicy') || undefined,
-                  width: el.getAttribute('width') || undefined,
-                  height: el.getAttribute('height') || undefined,
-                } } },
-                { insert: '\n' },
-              ])
+          // 視頻 iframe（保留完整屬性）
+          const videoOps = matchVideoIframe(el)
+          if (videoOps) {
+            const Delta = window.Quill.import('delta') as unknown as {
+              new (ops?: unknown[]): unknown
             }
+            return new Delta(videoOps)
           }
 
           return delta
         })
 
-        // 注入自定義 CSS：懸掛縮進 + HTML 按鈕樣式 + FAQ 按鈕 + FAQ 區塊樣式
+        // 注入插件 CSS（列表懸掛縮進 + FAQ 群組樣式 + 按鈕圖標）
         const styleEl = document.createElement('style')
-        styleEl.textContent = `
-          /* 有序列表懸掛縮進：序號在外，標題和描述左對齊嚴絲合縫 */
-          .ql-editor ol { padding-left: 2.5em; list-style-position: outside; }
-          .ql-editor ol li { padding-left: 0.5em; }
-          .ql-editor ol li::marker { font-weight: bold; }
-
-          /* HTML 源碼按鈕 + FAQ 按鈕 */
-          .ql-toolbar .ql-video-picker::after { content: "🎥"; font-size: 14px; }
-        .ql-toolbar .ql-html-source::after { content: "<>"; font-family: monospace; font-size: 14px; }
-        .ql-toolbar .ql-faq-picker::after { content: "❓"; font-size: 14px; }
-
-        /* FAQ 區塊樣式（編輯器內） */
-        .ql-editor details.faq-item {
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 12px 16px;
-          margin: 8px 0;
-          background: #f9fafb;
-        }
-        .ql-editor details.faq-item > summary {
-          cursor: pointer;
-          font-weight: 600;
-          color: #1f2937;
-          list-style: none;
-        }
-        .ql-editor details.faq-item > summary::-webkit-details-marker { display: none; }
-        .ql-editor details.faq-item > summary::before {
-          content: "▶";
-          display: inline-block;
-          margin-right: 6px;
-          font-size: 10px;
-          transition: transform 0.2s;
-        }
-        .ql-editor details.faq-item[open] > summary::before { transform: rotate(90deg); }
-        .ql-editor details.faq-item[open] > summary { margin-bottom: 8px; }
-        .ql-editor details.faq-item > div {
-          font-size: 14px;
-          line-height: 1.6;
-          color: #4b5563;
-        }
-        `
+        styleEl.textContent = listPluginCSS + faqPluginCSS + toolbarButtonCSS
         editorContainer.appendChild(styleEl)
 
-        // 自定義按鈕樣式
+        // 自定義按鈕標題
         const htmlBtn = editorContainer.querySelector('.ql-html-source')
-        if (htmlBtn) {
-          htmlBtn.setAttribute('title', 'HTML 源碼模式')
-        }
+        if (htmlBtn) htmlBtn.setAttribute('title', 'HTML 源碼模式')
         const videoBtn = editorContainer.querySelector('.ql-video-picker')
-        if (videoBtn) {
-          videoBtn.setAttribute('title', '插入視頻')
-        }
+        if (videoBtn) videoBtn.setAttribute('title', '插入視頻')
         const faqBtn = editorContainer.querySelector('.ql-faq-picker')
-        if (faqBtn) {
-          faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
-        }
+        if (faqBtn) faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
 
         // 設置已有內容
         if (form.content) {
@@ -1496,12 +1339,12 @@ export default function ContentEdit() {
       setSaveHint(changes)
     }
 
-    // 從編輯器獲取最新內容
+    // 從編輯器獲取最新內容（清理 Quill 專有屬性，確保前端正確渲染）
     let content = form.content
     if (htmlMode && htmlSource) {
-      content = htmlSource
+      content = cleanupQuillHtml(htmlSource)
     } else if (quillRef.current) {
-      content = quillRef.current.root.innerHTML
+      content = cleanupQuillHtml(quillRef.current.root.innerHTML)
     }
 
     setSaving(true)

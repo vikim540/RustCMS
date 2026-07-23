@@ -3,7 +3,7 @@ import { useState } from 'react'
 /**
  * FAQ Q&A 配對結構
  */
-interface FaqPair {
+export interface FaqPair {
   id: string
   question: string
   answer: string
@@ -17,7 +17,7 @@ function genId(): string {
 }
 
 /**
- * HTML 轉義（防止 XSS，問答內容可能含特殊字符）
+ * HTML 轉義（防止 XSS，問題文字可能含特殊字符）
  */
 function escapeHtml(text: string): string {
   return text
@@ -28,28 +28,61 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * 生成單個 FAQ 的 HTML
- * 結構：<details class="faq-item"><summary>問題</summary><div>答案</div></details>
+ * 生成單個 FAQ 的 HTML（含 Google 微數據 microdata 屬性）
+ *
+ * 結構：
+ * <details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+ *   <summary itemprop="name">問題</summary>
+ *   <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+ *     <div itemprop="text">答案</div>
+ *   </div>
+ * </details>
  *
  * 問題：轉義 HTML（純文字展示）
  * 答案：不轉義（允許基本 HTML 標籤如 <strong>/<a>），後端 sanitizeHtml 會清理危險標籤
  *
- * Nuxt 前端已對 <details>/<summary> 設置基礎樣式
- * 後端解析此 class="faq-item" 生成 FAQPage JSON-LD
+ * 微數據參考：https://developers.google.com/search/docs/appearance/structured-data/faqpage
  */
-function buildFaqHtml(pair: FaqPair): string {
+function buildFaqItemHtml(pair: FaqPair): string {
   const q = escapeHtml(pair.question.trim())
   const a = pair.answer.trim()
-  return `<details class="faq-item"><summary>${q}</summary><div>${a}</div></details>`
+  return `<details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question"><summary itemprop="name">${q}</summary><div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer"><div itemprop="text">${a}</div></div></details>`
+}
+
+/**
+ * 生成整組 FAQ 的 HTML（含 FAQPage 微數據容器）
+ *
+ * 結構：
+ * <div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">
+ *   <details class="faq-item" ...>...</details>
+ *   <details class="faq-item" ...>...</details>
+ * </div>
+ *
+ * 整組 FAQ 包裝在一個容器中，作為單一的 BlockEmbed 插入編輯器
+ * 避免多個獨立 embed 之間產生空 <p><br/></p> 行
+ */
+export function buildFaqGroupHtml(pairs: FaqPair[]): string {
+  const validPairs = pairs.filter((p) => p.question.trim() && p.answer.trim())
+  if (validPairs.length === 0) return ''
+  const itemsHtml = validPairs.map(buildFaqItemHtml).join('')
+  return `<div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">${itemsHtml}</div>`
 }
 
 /**
  * FAQ 插入面板 Modal（可複用組件）
  *
  * 用戶可添加多組問答配對，插入後在編輯器中生成
- * <details class="faq-item"><summary>Q</summary><div>A</div></details>
+ * <div class="faq-group" itemscope itemtype="https://schema.org/FAQPage">
+ *   <details class="faq-item" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+ *     <summary itemprop="name">Q</summary>
+ *     <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+ *       <div itemprop="text">A</div>
+ *     </div>
+ *   </details>
+ * </div>
  *
- * 後端解析這些標籤生成 FAQPage JSON-LD（SEO 結構化數據）
+ * 後端解析 class="faq-item" 生成 FAQPage JSON-LD（SEO 結構化數據）
+ * 前端 Nuxt 直接讀取 HTML 中的 microdata 屬性（雙重 SEO 覆蓋）
  *
  * 用法：
  * ```tsx
@@ -69,7 +102,7 @@ export default function FaqPickerModal({
 }: {
   open: boolean
   onClose: () => void
-  /** 插入完成後的回調，返回 HTML 字符串（多個 <details> 塊） */
+  /** 插入完成後的回調，返回 HTML 字符串（整組 <div class="faq-group"> 塊） */
   onInsert: (html: string) => void
 }) {
   const [pairs, setPairs] = useState<FaqPair[]>([
@@ -98,10 +131,8 @@ export default function FaqPickerModal({
 
   /** 確認插入 */
   const handleConfirm = () => {
-    const validPairs = pairs.filter((p) => p.question.trim() && p.answer.trim())
-    if (validPairs.length === 0) return
-
-    const html = validPairs.map(buildFaqHtml).join('\n')
+    const html = buildFaqGroupHtml(pairs)
+    if (!html) return
     onInsert(html)
 
     // 重置狀態
@@ -127,7 +158,7 @@ export default function FaqPickerModal({
           <div>
             <h2 className="text-lg font-semibold">❓ 插入 FAQ 問答</h2>
             <p className="text-xs text-gray-500 mt-1">
-              生成 <code className="bg-gray-100 px-1 rounded">&lt;details&gt;</code> 標籤，後端自動生成 FAQPage JSON-LD 結構化數據（SEO）
+              生成 <code className="bg-gray-100 px-1 rounded">&lt;details&gt;</code> 標籤，含 Google 微數據（microdata）+ JSON-LD 雙重結構化數據（SEO）
             </p>
           </div>
           <button
@@ -218,7 +249,7 @@ export default function FaqPickerModal({
         <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50">
           <span className="text-xs text-gray-500">
             {validPairs.length > 0
-              ? `✅ ${validPairs.length} 組有效問答將插入`
+              ? `✅ ${validPairs.length} 組有效問答將作為一組插入`
               : '請填寫問題和答案'}
           </span>
           <div className="flex gap-2">

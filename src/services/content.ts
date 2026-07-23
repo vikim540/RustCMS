@@ -101,11 +101,15 @@ export async function handleListContents(
 /**
  * 從文章 HTML 中提取 FAQ 問答塊，生成 FAQPage JSON-LD 結構化數據
  *
- * 解析 <details class="faq-item"><summary>問題</summary><div>答案</div></details> 塊
+ * 解析 <details class="faq-item">...</details> 塊（含 microdata 屬性）
+ * 支援兩種格式：
+ *   新格式：<div class="faq-group" itemscope itemtype="...FAQPage"><details class="faq-item" itemprop="mainEntity" ...>...</details></div>
+ *   舊格式：<details class="faq-item"><summary>Q</summary><div>A</div></details>
  * 生成符合 Google FAQPage 結構化數據規範的 JSON-LD
  *
- * 編輯器 FaqPickerModal 插入的 FAQ 塊帶有 class="faq-item" 標記，
- * 後端以此識別並生成結構化數據，供 Nuxt 前端注入 <head> 做 SEO 優化
+ * 編輯器 FaqPickerModal 插入的 FAQ 塊帶有 class="faq-item" 標記 + microdata 屬性，
+ * 後端以此識別並生成 JSON-LD，供 Nuxt 前端注入 <head> 做 SEO 優化
+ * 前端 Nuxt 也可直接讀取 HTML 中的 microdata 屬性（雙重 SEO 覆蓋）
  *
  * @param htmlContent 文章正文 HTML
  * @returns JSON-LD 字符串，或 null（無 FAQ 塊時）
@@ -116,6 +120,7 @@ function extractFaqJson(htmlContent: string): string | null {
   const faqBlocks: { question: string; answer: string }[] = []
 
   // 匹配 <details class="faq-item">...</details> 塊（非貪婪，跨行）
+  // 同時匹配新格式（帶 microdata 屬性）和舊格式
   const detailsRegex = /<details[^>]*class="[^"]*faq-item[^"]*"[^>]*>([\s\S]*?)<\/details>/gi
   let match: RegExpExecArray | null
 
@@ -126,9 +131,17 @@ function extractFaqJson(htmlContent: string): string | null {
     const summaryMatch = inner.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
     const question = summaryMatch ? stripHtmlTags(summaryMatch[1]) : ''
 
-    // 提取 </summary> 之後的內容作為答案（剝離所有 HTML 標籤）
-    const afterSummary = inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, '')
-    const answer = stripHtmlTags(afterSummary)
+    // 提取答案：優先取 itemprop="text" 的內容（新格式），否則取 </summary> 之後的內容（舊格式）
+    const answerTextMatch = inner.match(/itemprop="text"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/details>/i)
+    let answer: string
+    if (answerTextMatch) {
+      // 新格式：<div itemprop="text">答案</div>
+      answer = stripHtmlTags(answerTextMatch[1])
+    } else {
+      // 舊格式：</summary> 之後的所有內容
+      const afterSummary = inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, '')
+      answer = stripHtmlTags(afterSummary)
+    }
 
     if (question && answer) {
       faqBlocks.push({ question, answer })

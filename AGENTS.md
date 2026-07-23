@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.12**（2026-07-22）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.13**（2026-07-23）
 
 
 ## 版本更新記錄（憑證）
@@ -9,6 +9,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.9.13 | 2026-07-23 | FAQ 群組化 + 微數據 + 列表清理 + 編輯器插件化。FAQ 從獨立 `<details>` 改為整組 `<div class="faq-group" itemscope itemtype="...FAQPage">` 包裝為單一 BlockEmbed（修復多項間空 `<p><br/></p>`）、加入 Google microdata 屬性（itemprop=mainEntity/name/acceptedAnswer/text，雙重 SEO：microdata + JSON-LD）、保存時 cleanupQuillHtml 移除 Quill 專有屬性（data-list/ql-ui/contenteditable）、編輯器二次開發功能抽取到 `admin/src/lib/quill/` 獨立模組（faqPlugin/videoPlugin/listPlugin/htmlCleanup + README 文檔） |
 | v1.9.12 | 2026-07-22 | iframe 保存修復 + 標籤輸入字段類型。sanitizeHtml 移除 iframe 危險標籤列表改為 YouTube 域名白名單驗證（sanitizeIframeSrc 函數，非白名單 src 替換為 #）、Quill CustomVideoBlot 覆蓋內建 video blot 保留完整 iframe 屬性（title/allow/referrerpolicy/width/height）、clipboard matcher 同時處理 FAQ 和 iframe 元素、新增擴展字段類型 type=11「標籤輸入（帶歷史）」複用 TagInput 組件（多值氣泡標籤+批量導入+歷史標籤點擊補充）、後端新增 GET /admin/extfields/:id/history API（查詢 DISTINCT 歷史值按最近使用排序） |
 | v1.9.11 | 2026-07-22 | FAQ 結構化數據功能。新增 FaqPickerModal 組件（多組問答輸入+預覽，生成 <details class="faq-item"> HTML）、Quill 自定義 FaqBlock BlockEmbed blot（clipboard matcher 確保載入已有內容時 FAQ 塊不丟失）、編輯器工具列新增 ❓ FAQ 按鈕、後端 extractFaqJson 函數解析 <details class="faq-item"> 生成 FAQPage JSON-LD、API 響應新增 faqJson 欄位供 Nuxt 前端注入 <head> SEO |
 | v1.9.10 | 2026-07-22 | 視頻面板修復 + CSP 安全頭 + 封面圖媒體庫。YouTube URL 解析雙重策略（正則 + URL API fallback，新增 shorts/live 格式支援）、iframe 生成 HTML 添加 referrerpolicy 屬性（匹配 YouTube 官方結構）、CSP frame-src 加入 YouTube 域名（解除 iframe 預覽阻擋）、修復 Slug pattern 屬性 v 模式正則錯誤（\- 改為字面量前綴）、VideoPickerModal 封面圖新增媒體庫選擇按鈕（複用 MediaPickerModal + useImageUpload） |
