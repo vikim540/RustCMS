@@ -409,28 +409,12 @@ app.get('/api/v1/slides', async (c) => {
 // 內鏈關鍵詞列表（供前端網站 tagLink 功能使用）
 app.get('/api/v1/internallinks', async (c) => extraService.handleListTags(siteDB(c)));
 
-// 文章標籤搜索（公開，搜索 ay_content.tags 字段）
-app.get('/api/v1/tags', async (c) => {
-  const q = (c.req.query('q') || '').trim();
-  const limit = Math.min(Number(c.req.query('limit')) || 50, 200);
-  const db = siteDB(c);
-  // 從已發布文章中提取所有標籤（tags 字段為逗號分隔），去重 + 搜索過濾
-  const rows = await db.prepare(
-    `SELECT DISTINCT tags FROM ay_content WHERE status = '1' AND tags != '' AND tags IS NOT NULL`,
-  ).all<{ tags: string }>();
-  const tagSet = new Set<string>();
-  for (const row of rows.results) {
-    if (!row.tags) continue;
-    row.tags.split(/[,，]/).forEach((t) => {
-      const trimmed = t.trim();
-      if (trimmed) tagSet.add(trimmed);
-    });
-  }
-  let tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-  if (q) {
-    tags = tags.filter((t) => t.toLowerCase().includes(q.toLowerCase()));
-  }
-  return okData(tags.slice(0, limit), `找到 ${tags.length} 個標籤`);
+// 文章標籤搜索（公開 API）
+// - q 參數存在：返回匹配標籤的文章列表（與 /contents 格式一致，含分頁）
+// - q 參數不存在：返回所有不重複標籤列表（供標籤雲/自動補全）
+app.get('/api/v1/tags', publicRateLimit(), async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  return contentService.handleListContentsByTag(siteDB(c), params);
 });
 
 // ===== 公開表單提交端點（隱蔽化路徑，通過 submit_token 路由）=====

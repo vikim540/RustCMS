@@ -589,7 +589,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/singles', desc: '單頁列表', auth: false },
   { method: 'GET', path: '/api/v1/singles/:scode', desc: '單頁詳情', auth: false },
   { method: 'GET', path: '/api/v1/internallinks', desc: '內鏈關鍵詞列表（供前端 tagLink 自動連結）', auth: false },
-  { method: 'GET', path: '/api/v1/tags', desc: '文章標籤搜索（?q=關鍵詞&limit=50，搜索 ay_content.tags）', auth: false },
+  { method: 'GET', path: '/api/v1/tags', desc: '文章標籤搜索（?q=標籤詞 → 返回匹配文章列表；無 q → 返回所有標籤）', auth: false },
   { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
   { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },

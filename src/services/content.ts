@@ -600,3 +600,60 @@ export async function handleAllContentTags(db: D1Database): Promise<Response> {
     return err(`獲取標籤列表失敗: ${msg}`, 1005);
   }
 }
+
+/**
+ * 按標籤搜索文章（公開 API）
+ *
+ * 行為：
+ * - q 參數存在時：返回 tags 字段包含該標籤的已發布文章列表（與 /contents 相同格式）
+ * - q 參數不存在時：返回所有不重複標籤列表（供標籤雲/自動補全使用）
+ *
+ * 響應格式與 handleListContents 一致（okList + summaryFields + 分頁）
+ */
+export async function handleListContentsByTag(
+  db: D1Database,
+  params: URLSearchParams,
+): Promise<Response> {
+  const q = (params.get('q') || '').trim();
+
+  // 無搜索關鍵詞時，返回所有標籤列表
+  if (!q) {
+    const result = await db.prepare(
+      "SELECT tags FROM ay_content WHERE status = '1' AND tags IS NOT NULL AND tags != ''",
+    ).all<{ tags: string }>();
+
+    const tagSet = new Set<string>();
+    for (const row of result.results) {
+      if (!row.tags) continue;
+      row.tags.split(/[,，]/).forEach((t) => {
+        const trimmed = t.trim();
+        if (trimmed) tagSet.add(trimmed);
+      });
+    }
+
+    const tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    return okData(tags, `找到 ${tags.length} 個標籤`);
+  }
+
+  // 有搜索關鍵詞時，返回匹配標籤的文章列表（與 /contents 格式一致）
+  const pagination = fromQuery(params);
+  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
+
+  const conditions = ["c.status = '1'", "c.scode != ''", 'c.tags LIKE ?'];
+  const binds: (string | number)[] = [`%${q}%`];
+
+  const whereClause = conditions.join(' AND ');
+  const off = offset(pagination);
+
+  // 排序：置頂 > 推薦 > 頭條 > 排序 > 日期 > ID
+  const orderClause = 'c.istop DESC, c.isrecommend DESC, c.isheadline DESC, c.sorting ASC, c.date DESC, c.id DESC';
+
+  const listSql = `SELECT ${summaryFields} FROM ay_content c WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
+  const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
+
+  const countSql = `SELECT COUNT(*) as total FROM ay_content c WHERE ${whereClause}`;
+  const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
+  const total = countResult?.total ?? 0;
+
+  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), `找到 ${total} 篇含「${q}」標籤的文章`);
+}
